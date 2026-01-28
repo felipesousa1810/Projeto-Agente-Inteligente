@@ -243,25 +243,23 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
         agent = get_agent()
         result = await agent.run(message.body, deps=deps)
 
-        # Parse result
-        response_data = result.data if isinstance(result.data, dict) else {}
+        # Parse result - Pydantic AI uses .output, not .data
+        # The output is a string (text response from LLM)
+        output_text = str(result.output) if result.output else ""
 
-        # Determine intent from response
-        intent_str = response_data.get("intent", "unknown")
-        try:
-            intent = IntentType(intent_str)
-        except ValueError:
-            intent = IntentType.UNKNOWN
+        # Since we're not using structured output, parse intent from text
+        # For now, default to UNKNOWN and use the raw text as reply
+        intent = IntentType.UNKNOWN
 
         # Build response
         response = AgentResponse(
             trace_id=trace_id,
             intent=intent,
-            reply_text=response_data.get("reply", str(result.data)),
-            confidence=response_data.get("confidence", 0.8),
-            appointment_id=response_data.get("appointment_id"),
-            extracted_data=response_data.get("extracted_data", {}),
-            clarification_needed=response_data.get("clarification_needed", False),
+            reply_text=output_text or "Não consegui processar sua mensagem.",
+            confidence=0.8,
+            appointment_id=None,
+            extracted_data={},
+            clarification_needed=False,
         )
 
         elapsed_ms = (datetime.now() - start_time).total_seconds() * 1000
