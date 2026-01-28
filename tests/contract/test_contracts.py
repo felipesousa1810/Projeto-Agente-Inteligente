@@ -47,7 +47,7 @@ class TestWhatsAppMessageContract:
         """Test that short message_id fails validation."""
         with pytest.raises(ValidationError) as exc_info:
             WhatsAppMessage(
-                message_id="short",  # Too short (< 16)
+                message_id="abc",  # Too short (< 4)
                 from_number="+5511999999999",
                 body="Test",
                 timestamp=datetime.now(),

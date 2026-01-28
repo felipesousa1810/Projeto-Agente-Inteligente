@@ -2,7 +2,7 @@
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class IntentType(str, Enum):
@@ -56,10 +56,8 @@ class AgentResponse(BaseModel):
         description="Se o agente precisa de mais informações",
     )
 
-    class Config:
-        """Pydantic config."""
-
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "trace_id": "550e8400-e29b-41d4-a716-446655440000",
                 "intent": "schedule",
@@ -70,3 +68,4 @@ class AgentResponse(BaseModel):
                 "clarification_needed": False,
             }
         }
+    )
