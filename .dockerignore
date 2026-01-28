@@ -36,9 +36,9 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
-# Ignore docs
-*.md
-!README.md
+# Ignore docs (except README.md which is needed)
+SPEC.md
+AGENTS.md
 
 # Ignore local data
 data/

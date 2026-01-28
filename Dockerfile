@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.12-slim as builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy requirements
 COPY pyproject.toml .
+COPY README.md .
 COPY src/ src/
 
 # Install dependencies
