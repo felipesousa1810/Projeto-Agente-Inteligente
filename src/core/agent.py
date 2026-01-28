@@ -54,8 +54,9 @@ def create_agent(
     # Create OpenAI model with deterministic settings
     model = OpenAIModel(
         config.model,
-        api_key=settings.openai_api_key,
+        # api_key is automatically loaded from OPENAI_API_KEY env var
     )
+
 
     # Create agent
     agent: Agent[AgentDependencies, dict[str, Any]] = Agent(
