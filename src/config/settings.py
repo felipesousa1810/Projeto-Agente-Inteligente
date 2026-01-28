@@ -3,6 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,7 +29,10 @@ class Settings(BaseSettings):
     # Evolution API (WhatsApp)
     evolution_api_url: str = "http://localhost:8080"
     evolution_api_key: str = ""
-    evolution_instance_name: str = "default"
+    evolution_instance_name: str = Field(
+        default="default",
+        alias="EVOLUTION_INSTANCE",
+    )
 
     # Observability
     jaeger_endpoint: str = "http://localhost:14268/api/traces"
