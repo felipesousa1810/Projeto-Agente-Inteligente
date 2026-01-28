@@ -1,0 +1,46 @@
+# Ignore git
+.git
+.gitignore
+
+# Ignore Python cache
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+
+# Ignore virtual environments
+venv/
+.venv/
+env/
+
+# Ignore IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ignore tests for production
+tests/
+pytest.ini
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Ignore development files
+.env
+.env.local
+*.log
+.mypy_cache/
+.ruff_cache/
+
+# Ignore docs
+*.md
+!README.md
+
+# Ignore local data
+data/
+*.db
+*.sqlite3
