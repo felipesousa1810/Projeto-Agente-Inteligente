@@ -255,13 +255,20 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
         # 2. Construir contexto para o agente
         context = state_manager.build_context_prompt(fsm)
 
-        # Combinar contexto com mensagem do usuário
+        # 3. Adicionar data/hora atual (SEMPRE atualizado por requisição)
+        now = datetime.now()
+        current_datetime = (
+            f"**[REFERÊNCIA DE TEMPO]**\n"
+            f"- Data atual: {now.strftime('%d/%m/%Y')}\n"
+            f"- Hora atual: {now.strftime('%H:%M')}\n"
+            f"- Dia da semana: {['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'][now.weekday()]}\n"
+        )
+
+        # Combinar contexto + data/hora + mensagem do usuário
+        prompt_with_context = f"{current_datetime}\n"
         if context:
-            prompt_with_context = (
-                f"{context}\n\n**Mensagem do paciente:** {message.body}"
-            )
-        else:
-            prompt_with_context = message.body
+            prompt_with_context += f"{context}\n\n"
+        prompt_with_context += f"**Mensagem do paciente:** {message.body}"
 
         logger.info(
             "process_message_with_context",

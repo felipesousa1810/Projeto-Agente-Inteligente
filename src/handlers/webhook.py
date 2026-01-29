@@ -158,3 +158,52 @@ async def webhook_health() -> dict:
         Health status dict.
     """
     return {"status": "healthy", "endpoint": "webhook"}
+
+
+@router.delete("/debug/clear-context/{phone}")
+async def clear_context(phone: str) -> dict:
+    """Clear conversation context for a phone number (debug/testing only).
+
+    Args:
+        phone: Phone number to clear context for.
+
+    Returns:
+        Status dict.
+    """
+    from src.services.conversation_state import get_conversation_state_manager
+
+    try:
+        state_manager = get_conversation_state_manager()
+        await state_manager.clear(phone)
+        logger.info("debug_context_cleared", phone=phone)
+        return {"status": "success", "message": f"Context cleared for {phone}"}
+    except Exception as e:
+        logger.error("debug_context_clear_failed", phone=phone, error=str(e))
+        return {"status": "error", "message": str(e)}
+
+
+@router.get("/debug/get-context/{phone}")
+async def get_context(phone: str) -> dict:
+    """Get conversation context for a phone number (debug/testing only).
+
+    Args:
+        phone: Phone number to get context for.
+
+    Returns:
+        Context data dict.
+    """
+    from src.services.conversation_state import get_conversation_state_manager
+
+    try:
+        state_manager = get_conversation_state_manager()
+        fsm = await state_manager.get_or_create(phone)
+        return {
+            "status": "success",
+            "phone": phone,
+            "current_state": fsm.current_state.value,
+            "collected_data": fsm.collected_data,
+            "history": [s.value for s in fsm.history],
+        }
+    except Exception as e:
+        logger.error("debug_context_get_failed", phone=phone, error=str(e))
+        return {"status": "error", "message": str(e)}
