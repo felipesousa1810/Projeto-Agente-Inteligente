@@ -13,6 +13,8 @@ class IntentType(str, Enum):
     RESCHEDULE = "reschedule"
     CANCEL = "cancel"
     CONFIRM = "confirm"
+    DENY = "deny"
+    GREETING = "greeting"
     UNKNOWN = "unknown"
 
 

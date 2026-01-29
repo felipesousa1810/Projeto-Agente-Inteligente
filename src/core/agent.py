@@ -22,7 +22,8 @@ INTENT_MAPPING: dict[str, IntentType] = {
     "reschedule": IntentType.RESCHEDULE,
     "cancel": IntentType.CANCEL,
     "confirm": IntentType.CONFIRM,
-    "greeting": IntentType.UNKNOWN,  # Map greeting to UNKNOWN for now
+    "deny": IntentType.DENY,
+    "greeting": IntentType.GREETING,
     "unknown": IntentType.UNKNOWN,
 }
 
@@ -223,10 +224,13 @@ def get_agent() -> Agent[AgentDependencies, StructuredAgentOutput]:
 
 
 async def process_message(message: WhatsAppMessage) -> AgentResponse:
-    """Process incoming WhatsApp message and return agent response.
+    """Process incoming WhatsApp message using DETERMINISTIC architecture.
 
-    This is the main entry point for message processing.
-    Now with conversation context memory via FSM stored in Redis.
+    Architecture: NLU → DecisionEngine → Templates → NLG
+    - NLU: Extracts intent and entities (LLM)
+    - DecisionEngine: Decides next action (CODE - 100% deterministic)
+    - Templates: Provides response structure (CODE)
+    - NLG: Humanizes the response (LLM)
 
     Args:
         message: Validated WhatsApp message.
@@ -234,120 +238,148 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
     Returns:
         AgentResponse with intent, reply, and extracted data.
     """
+    from src.core.decision_engine import get_decision_engine
+    from src.core.nlg import NLG
+    from src.core.nlu import NLU
+    from src.core.templates import format_template, get_faq_answer
     from src.services.conversation_state import get_conversation_state_manager
 
     trace_id = str(uuid.uuid4())
+    now = datetime.now()
 
     logger.info(
         "process_message_start",
         trace_id=trace_id,
         message_id=message.message_id,
         from_number=message.from_number,
+        architecture="deterministic",
     )
 
-    start_time = datetime.now()
+    start_time = now
 
     try:
-        # 1. Recuperar estado da conversa do Redis
+        # =====================================================
+        # STEP 1: Get conversation state from Redis
+        # =====================================================
         state_manager = get_conversation_state_manager()
         fsm = await state_manager.get_or_create(message.from_number)
 
-        # 2. Construir contexto para o agente
-        context = state_manager.build_context_prompt(fsm)
-
-        # 3. Adicionar data/hora atual (SEMPRE atualizado por requisição)
-        now = datetime.now()
-        current_datetime = (
-            f"**[REFERÊNCIA DE TEMPO]**\n"
-            f"- Data atual: {now.strftime('%d/%m/%Y')}\n"
-            f"- Hora atual: {now.strftime('%H:%M')}\n"
-            f"- Dia da semana: {['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'][now.weekday()]}\n"
-        )
-
-        # Combinar contexto + data/hora + mensagem do usuário
-        prompt_with_context = f"{current_datetime}\n"
-        if context:
-            prompt_with_context += f"{context}\n\n"
-        prompt_with_context += f"**Mensagem do paciente:** {message.body}"
-
         logger.info(
-            "process_message_with_context",
+            "fsm_state_loaded",
             trace_id=trace_id,
-            has_context=bool(context),
+            current_state=fsm.current_state.value,
             collected_data=fsm.collected_data,
         )
 
-        # Create dependencies
-        deps = AgentDependencies(
-            customer_id=message.from_number,
+        # =====================================================
+        # STEP 2: NLU - Extract intent and entities (LLM)
+        # =====================================================
+        nlu = NLU()
+        nlu_output = await nlu.extract(
+            message=message.body,
+            current_date=now.strftime("%Y-%m-%d"),
+            current_time=now.strftime("%H:%M"),
+        )
+
+        logger.info(
+            "nlu_extraction_complete",
             trace_id=trace_id,
+            intent=nlu_output.intent,
+            extracted_date=nlu_output.extracted_date,
+            extracted_time=nlu_output.extracted_time,
+            extracted_procedure=nlu_output.extracted_procedure,
+            confidence=nlu_output.confidence,
         )
 
-        # Get agent and run with context
-        # GUARDRAIL VIA CÓDIGO: Limitar tool calls usando UsageLimits
-        # Isso é a forma correta de fazer guardrails - via código, não prompt
-        from pydantic_ai import UsageLimits
+        # =====================================================
+        # STEP 3: DecisionEngine - Decide next action (CODE)
+        # This is 100% DETERMINISTIC - same input = same output
+        # =====================================================
+        decision_engine = get_decision_engine()
+        action = decision_engine.decide(fsm, nlu_output)
 
-        agent = get_agent()
-        result = await agent.run(
-            prompt_with_context,
-            deps=deps,
-            usage_limits=UsageLimits(
-                request_limit=10,  # Max 10 requests to LLM per message
-                token_limit=4096,  # Max tokens consumed
-            ),
+        logger.info(
+            "decision_made",
+            trace_id=trace_id,
+            action_type=action.action_type.value,
+            template_key=action.template_key,
+            requires_tool=action.requires_tool,
         )
 
-        # Parse structured output from Pydantic AI
-        output: StructuredAgentOutput = result.output
+        # =====================================================
+        # STEP 4: Execute tool if needed (CODE)
+        # =====================================================
+        tool_result: dict[str, Any] = {}
+        if action.requires_tool and action.tool_name:
+            tool_result = await _execute_tool(
+                action.tool_name,
+                action.context,
+                message.from_number,
+                trace_id,
+            )
+            # Merge tool result into context
+            action.context.update(tool_result)
 
-        # Map structured intent to IntentType enum
-        intent = INTENT_MAPPING.get(output.intent, IntentType.UNKNOWN)
+        # =====================================================
+        # STEP 5: Format template (CODE)
+        # =====================================================
+        # Handle special cases
+        if action.template_key == "faq_response":
+            faq_answer = get_faq_answer(nlu_output.extracted_procedure)
+            action.context["answer"] = faq_answer
+            if not nlu_output.extracted_procedure:
+                action.context["procedure"] = "tratamentos"
 
-        # 3. Atualizar FSM com dados extraídos
-        if output.extracted_date:
-            fsm.set_data("date", output.extracted_date)
-        if output.extracted_time:
-            fsm.set_data("time", output.extracted_time)
+        # Handle availability for time slots
+        if action.template_key == "ask_time":
+            slots = action.context.get(
+                "available_slots", "09:00, 10:00, 14:00, 15:00, 16:00"
+            )
+            if isinstance(slots, list):
+                slots = ", ".join(slots)
+            action.context["available_slots"] = slots
 
-        # Detectar procedimento da mensagem (heurística simples)
-        body_lower = message.body.lower()
-        procedures = [
-            "limpeza",
-            "clareamento",
-            "restauração",
-            "ortodontia",
-            "implante",
-            "prótese",
-            "canal",
-            "extração",
-            "emergência",
-            "consulta",
-        ]
-        for proc in procedures:
-            if proc in body_lower and "procedure" not in fsm.collected_data:
-                fsm.set_data("procedure", proc.title())
-                break
+        template_text = format_template(action.template_key, **action.context)
 
-        # 4. Salvar estado atualizado no Redis
+        logger.info(
+            "template_formatted",
+            trace_id=trace_id,
+            template_key=action.template_key,
+            template_length=len(template_text),
+        )
+
+        # =====================================================
+        # STEP 6: NLG - Humanize response (LLM)
+        # =====================================================
+        nlg = NLG(skip_humanization=False)  # Set to True for faster responses
+        humanized_response = await nlg.humanize(template_text)
+
+        # =====================================================
+        # STEP 7: Update FSM state if action specifies
+        # =====================================================
+        if action.next_state and fsm.can_transition_to(action.next_state):
+            fsm.transition(action.next_state)
+
+        # Save updated FSM to Redis
         await state_manager.save(message.from_number, fsm)
 
-        # Build extracted_data from structured output + FSM
-        extracted_data: dict[str, str] = dict(fsm.collected_data)
-        if output.extracted_date:
-            extracted_data["date"] = output.extracted_date
-        if output.extracted_time:
-            extracted_data["time"] = output.extracted_time
+        # =====================================================
+        # STEP 8: Build and return response
+        # =====================================================
+        # Map NLU intent to IntentType enum
+        intent = INTENT_MAPPING.get(nlu_output.intent, IntentType.UNKNOWN)
 
-        # Build response from structured output
+        # Build extracted_data from FSM
+        extracted_data: dict[str, str] = dict(fsm.collected_data)
+
         response = AgentResponse(
             trace_id=trace_id,
             intent=intent,
-            reply_text=output.reply_text or "Não consegui processar sua mensagem.",
-            confidence=output.confidence,
-            appointment_id=None,
+            reply_text=humanized_response,
+            confidence=nlu_output.confidence,
+            appointment_id=tool_result.get("appointment_id"),
             extracted_data=extracted_data,
-            clarification_needed=output.clarification_needed,
+            clarification_needed=action.action_type.value == "clarify",
         )
 
         elapsed_ms = (datetime.now() - start_time).total_seconds() * 1000
@@ -359,6 +391,7 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
             confidence=response.confidence,
             latency_ms=elapsed_ms,
             extracted_data=extracted_data,
+            architecture="deterministic",
         )
 
         return response
@@ -385,3 +418,64 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
             confidence=0.0,
             clarification_needed=True,
         )
+
+
+async def _execute_tool(
+    tool_name: str,
+    context: dict[str, Any],
+    customer_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    """Execute a tool based on action requirements.
+
+    Args:
+        tool_name: Name of the tool to execute.
+        context: Context data for the tool.
+        customer_id: Customer phone number.
+        trace_id: Trace ID for logging.
+
+    Returns:
+        Tool execution result.
+    """
+    logger.info(
+        "tool_execution_start",
+        trace_id=trace_id,
+        tool_name=tool_name,
+    )
+
+    if tool_name == "check_availability":
+        # TODO: Use context.get("date") for real availability check
+        # Return mock availability for now
+        return {
+            "available": True,
+            "available_slots": ["09:00", "10:00", "14:00", "15:00", "16:00"],
+        }
+
+    if tool_name == "create_appointment":
+        # Generate confirmation code
+        confirmation_code = f"APPT-{uuid.uuid4().hex[:8].upper()}"
+        appointment_id = str(uuid.uuid4())
+
+        # TODO: Implement actual database insertion
+
+        return {
+            "success": True,
+            "appointment_id": appointment_id,
+            "confirmation_code": confirmation_code,
+        }
+
+    if tool_name == "cancel_appointment":
+        confirmation_code = context.get("confirmation_code", "")
+        # TODO: Implement actual cancellation
+
+        return {
+            "success": True,
+            "message": f"Agendamento {confirmation_code} cancelado.",
+        }
+
+    logger.warning(
+        "unknown_tool",
+        trace_id=trace_id,
+        tool_name=tool_name,
+    )
+    return {}
