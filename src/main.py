@@ -47,14 +47,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown
     logger.info("application_shutting_down")
 
-    # Cleanup connections
-    try:
-        from src.core.idempotency import get_idempotency_manager
-
-        manager = await get_idempotency_manager()
-        await manager.close()
-    except Exception as e:
-        logger.warning("cleanup_error", error=str(e))
+    # Note: IdempotencyManager connections are managed per-request
+    # No global cleanup needed
 
 
 # Create FastAPI app

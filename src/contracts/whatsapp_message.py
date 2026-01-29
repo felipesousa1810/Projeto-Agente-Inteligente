@@ -35,7 +35,7 @@ class EvolutionData(BaseModel):
     key: EvolutionKey
     pushName: str | None = None
     message: EvolutionMessageContent | None = None
-    messageTimestamp: int | datetime
+    messageTimestamp: int | datetime  # Accepts int, converted to datetime by validator
 
     @field_validator("messageTimestamp")
     @classmethod
@@ -43,7 +43,9 @@ class EvolutionData(BaseModel):
         """Convert timestamp to datetime if needed."""
         if isinstance(v, int):
             return datetime.fromtimestamp(v)
-        return v
+        if isinstance(v, datetime):
+            return v
+        raise ValueError(f"Invalid timestamp type: {type(v)}")
 
 
 class EvolutionWebhook(BaseModel):
