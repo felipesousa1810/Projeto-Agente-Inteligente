@@ -30,17 +30,29 @@ def configure_logfire() -> None:
         return
 
     try:
+        # Log token status for debugging
+        has_token = bool(settings.logfire_token)
+        logger.info(
+            "logfire_init",
+            has_token=has_token,
+            token_prefix=settings.logfire_token[:8] + "..." if has_token else "none",
+        )
+
         # Configura Logfire com token se disponível
         if settings.logfire_token:
             logfire.configure(token=settings.logfire_token)
+            logger.info("logfire_configured_with_token")
         else:
             # Usa .logfire dir local (para desenvolvimento)
             logfire.configure()
+            logger.info("logfire_configured_local")
 
         # Instrumenta Pydantic AI automaticamente
         logfire.instrument_pydantic_ai()
 
-        logger.info("logfire_configured", status="success")
+        logger.info(
+            "logfire_configured", status="success", pydantic_ai_instrumented=True
+        )
 
     except Exception as e:
         # Fail open - não quebra a aplicação se Logfire falhar

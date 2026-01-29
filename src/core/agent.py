@@ -284,15 +284,17 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
         )
 
         # Get agent and run with context
-        # Limit tool calls to prevent infinite loops
-        from pydantic_ai.settings import ModelSettings
+        # GUARDRAIL VIA CÓDIGO: Limitar tool calls usando UsageLimits
+        # Isso é a forma correta de fazer guardrails - via código, não prompt
+        from pydantic_ai import UsageLimits
 
         agent = get_agent()
         result = await agent.run(
             prompt_with_context,
             deps=deps,
-            model_settings=ModelSettings(
-                max_tokens=1024,
+            usage_limits=UsageLimits(
+                request_limit=10,  # Max 10 requests to LLM per message
+                token_limit=4096,  # Max tokens consumed
             ),
         )
 
