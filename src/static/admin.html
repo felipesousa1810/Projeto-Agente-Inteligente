@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔧 Admin - Contexto de Conversas</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 1.8rem;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+            font-size: 0.9rem;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 14px 18px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: #4f46e5;
+        }
+
+        input[type="text"]::placeholder {
+            color: #666;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            flex: 1;
+            padding: 14px 20px;
+            border-radius: 12px;
+            border: none;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(79, 70, 229, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #dc2626, #b91c1c);
+            color: #fff;
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(220, 38, 38, 0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #059669, #047857);
+            color: #fff;
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(5, 150, 105, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 16px;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.3);
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+            display: none;
+        }
+
+        .result.show {
+            display: block;
+        }
+
+        .result.success {
+            border-left: 4px solid #10b981;
+        }
+
+        .result.error {
+            border-left: 4px solid #ef4444;
+        }
+
+        .context-data {
+            margin-top: 20px;
+        }
+
+        .context-data h3 {
+            font-size: 0.9rem;
+            color: #888;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .data-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .data-item .label {
+            color: #888;
+        }
+
+        .data-item .value {
+            font-weight: 600;
+            color: #4ade80;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .empty-state .icon {
+            font-size: 3rem;
+            margin-bottom: 16px;
+        }
+
+        .quick-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+
+        .quick-btn {
+            padding: 8px 16px;
+            font-size: 0.8rem;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .quick-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #444;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Admin - Contexto</h1>
+        <p class="subtitle">Gerenciamento de contexto de conversas</p>
+
+        <div class="card">
+            <div class="input-group">
+                <input
+                    type="text"
+                    id="phone"
+                    placeholder="Número do telefone (ex: 5511999999999)"
+                    autocomplete="off"
+                >
+            </div>
+
+            <div class="btn-group">
+                <button class="btn-primary" onclick="getContext()">
+                    <span>👁️</span> Ver Contexto
+                </button>
+                <button class="btn-danger" onclick="clearContext()">
+                    <span>🗑️</span> Limpar
+                </button>
+            </div>
+
+            <div class="quick-actions">
+                <span style="color: #666; font-size: 0.8rem;">Ações rápidas:</span>
+            </div>
+
+            <div id="result" class="result"></div>
+
+            <div id="contextData" class="context-data" style="display: none;">
+                <h3>📋 Dados Coletados</h3>
+                <div id="dataItems"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 style="margin-bottom: 15px; font-size: 1rem;">📊 Informações do Sistema</h3>
+            <div class="data-item">
+                <span class="label">TTL do Contexto</span>
+                <span class="value">1 hora</span>
+            </div>
+            <div class="data-item">
+                <span class="label">Storage</span>
+                <span class="value">Redis</span>
+            </div>
+            <div class="data-item">
+                <span class="label">Status</span>
+                <span class="value" id="systemStatus">Verificando...</span>
+            </div>
+        </div>
+
+        <footer>
+            OdontoSorriso Agent Admin • v1.0
+        </footer>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        // Load saved phone from localStorage
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedPhone = localStorage.getItem('admin_phone');
+            if (savedPhone) {
+                document.getElementById('phone').value = savedPhone;
+            }
+            checkSystemStatus();
+        });
+
+        function savePhone() {
+            const phone = document.getElementById('phone').value.trim();
+            if (phone) {
+                localStorage.setItem('admin_phone', phone);
+            }
+        }
+
+        async function getContext() {
+            const phone = document.getElementById('phone').value.trim();
+            if (!phone) {
+                showResult('❌ Digite um número de telefone', 'error');
+                return;
+            }
+
+            savePhone();
+            showResult('<span class="loading"></span> Buscando...', '');
+
+            try {
+                const response = await fetch(`${API_BASE}/webhook/debug/get-context/${phone}`);
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    showResult('✅ Contexto encontrado', 'success');
+                    showContextData(data);
+                } else {
+                    showResult(`❌ ${data.message}`, 'error');
+                    hideContextData();
+                }
+            } catch (error) {
+                showResult(`❌ Erro: ${error.message}`, 'error');
+                hideContextData();
+            }
+        }
+
+        async function clearContext() {
+            const phone = document.getElementById('phone').value.trim();
+            if (!phone) {
+                showResult('❌ Digite um número de telefone', 'error');
+                return;
+            }
+
+            if (!confirm(`Limpar contexto para ${phone}?`)) {
+                return;
+            }
+
+            savePhone();
+            showResult('<span class="loading"></span> Limpando...', '');
+
+            try {
+                const response = await fetch(`${API_BASE}/webhook/debug/clear-context/${phone}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    showResult('✅ Contexto limpo com sucesso!', 'success');
+                    hideContextData();
+                } else {
+                    showResult(`❌ ${data.message}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Erro: ${error.message}`, 'error');
+            }
+        }
+
+        function showResult(message, type) {
+            const result = document.getElementById('result');
+            result.innerHTML = message;
+            result.className = `result show ${type}`;
+        }
+
+        function showContextData(data) {
+            const container = document.getElementById('contextData');
+            const items = document.getElementById('dataItems');
+
+            let html = `
+                <div class="data-item">
+                    <span class="label">Estado Atual</span>
+                    <span class="value">${data.current_state}</span>
+                </div>
+            `;
+
+            const collected = data.collected_data || {};
+            const labels = {
+                procedure: 'Procedimento',
+                date: 'Data',
+                time: 'Horário',
+                name: 'Nome'
+            };
+
+            for (const [key, value] of Object.entries(collected)) {
+                html += `
+                    <div class="data-item">
+                        <span class="label">${labels[key] || key}</span>
+                        <span class="value">${value}</span>
+                    </div>
+                `;
+            }
+
+            if (Object.keys(collected).length === 0) {
+                html += `
+                    <div class="empty-state">
+                        <div class="icon">📭</div>
+                        <p>Nenhum dado coletado ainda</p>
+                    </div>
+                `;
+            }
+
+            items.innerHTML = html;
+            container.style.display = 'block';
+        }
+
+        function hideContextData() {
+            document.getElementById('contextData').style.display = 'none';
+        }
+
+        async function checkSystemStatus() {
+            const statusEl = document.getElementById('systemStatus');
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                if (response.ok) {
+                    statusEl.textContent = '🟢 Online';
+                    statusEl.style.color = '#4ade80';
+                } else {
+                    statusEl.textContent = '🟡 Degraded';
+                    statusEl.style.color = '#fbbf24';
+                }
+            } catch (error) {
+                statusEl.textContent = '🔴 Offline';
+                statusEl.style.color = '#ef4444';
+            }
+        }
+    </script>
+</body>
+</html>

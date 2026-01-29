@@ -103,6 +103,23 @@ async def health_check() -> dict:
     }
 
 
+@app.get("/admin")
+async def admin_page():
+    """Serve admin page for context management.
+
+    Returns:
+        HTML page for managing conversation context.
+    """
+    from pathlib import Path
+
+    from fastapi.responses import HTMLResponse
+
+    admin_html = Path(__file__).parent / "static" / "admin.html"
+    if admin_html.exists():
+        return HTMLResponse(content=admin_html.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>Admin page not found</h1>", status_code=404)
+
+
 if __name__ == "__main__":
     import uvicorn
 
