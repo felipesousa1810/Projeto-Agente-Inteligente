@@ -284,8 +284,17 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
         )
 
         # Get agent and run with context
+        # Limit tool calls to prevent infinite loops
+        from pydantic_ai.settings import ModelSettings
+
         agent = get_agent()
-        result = await agent.run(prompt_with_context, deps=deps)
+        result = await agent.run(
+            prompt_with_context,
+            deps=deps,
+            model_settings=ModelSettings(
+                max_tokens=1024,
+            ),
+        )
 
         # Parse structured output from Pydantic AI
         output: StructuredAgentOutput = result.output
@@ -353,6 +362,8 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
         return response
 
     except Exception as e:
+        import traceback
+
         elapsed_ms = (datetime.now() - start_time).total_seconds() * 1000
 
         logger.error(
@@ -360,6 +371,7 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
             trace_id=trace_id,
             error=str(e),
             error_type=type(e).__name__,
+            traceback=traceback.format_exc(),
             latency_ms=elapsed_ms,
         )
 
