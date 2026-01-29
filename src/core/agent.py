@@ -437,6 +437,15 @@ async def _execute_tool(
     Returns:
         Tool execution result.
     """
+    from src.services.calendar import get_calendar_service
+    from src.services.supabase import (
+        cancel_appointment,
+        create_appointment,
+        get_appointment_by_code,
+        get_appointments_for_date,
+        get_or_create_customer,
+    )
+
     logger.info(
         "tool_execution_start",
         trace_id=trace_id,
@@ -444,29 +453,120 @@ async def _execute_tool(
     )
 
     if tool_name == "check_availability":
-        # TODO: Use context.get("date") for real availability check
-        # Return mock availability for now
-        return {
-            "available": True,
-            "available_slots": ["09:00", "10:00", "14:00", "15:00", "16:00"],
-        }
+        date_str = context.get("date")
+        if not date_str:
+            return {"available": False, "error": "Data não fornecida"}
+
+        try:
+            check_date = date.fromisoformat(date_str)
+
+            # 1. Fetch busy slots from Supabase (Internal)
+            db_appointments = await get_appointments_for_date(date_str)
+
+            # 2. Fetch busy slots from Google Calendar (External)
+            calendar_service = get_calendar_service()
+            gcal_busy = calendar_service.check_availability(check_date)
+
+            # 3. Merge and calculate available slots (Simple logic for now)
+            # Business logic: 09:00 - 17:00, 1 hour slots
+            all_slots = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"]
+            taken_times = set()
+
+            # Process DB appointments
+            for appt in db_appointments:
+                # stored as string HH:MM:SS or time object
+                t = str(appt["scheduled_time"])[:5]
+                taken_times.add(t)
+
+            # Process GCal events
+            # GCal returns ISO Format. robust parsing needed
+            for slot in gcal_busy:
+                start_iso = slot["start"]  # e.g. 2026-02-15T14:00:00Z
+                try:
+                    # Parse simplified
+                    dt_start = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
+                    # Convert to local time simplistic way (should use timezone lib)
+                    # For MVP, just extracting hour if date matches
+                    if dt_start.date() == check_date:
+                        taken_times.add(dt_start.strftime("%H:%M"))
+                except ValueError:
+                    continue
+
+            available_slots = [s for s in all_slots if s not in taken_times]
+
+            return {
+                "available": len(available_slots) > 0,
+                "available_slots": available_slots if available_slots else [],
+            }
+
+        except ValueError:
+            return {"available": False, "error": "Erro ao verificar data"}
 
     if tool_name == "create_appointment":
-        # Generate confirmation code
+        date_str = context.get("date")
+        time_str = context.get("time")
+        procedure = context.get("procedure", "Consulta")
+
+        if not date_str or not time_str:
+            return {"success": False, "error": "Data ou hora faltando"}
+
+        # 1. Get/Create Customer
+        customer = await get_or_create_customer(
+            customer_id
+        )  # customer_id is phone number here
+
+        # 2. Create in Supabase
         confirmation_code = f"APPT-{uuid.uuid4().hex[:8].upper()}"
-        appointment_id = str(uuid.uuid4())
 
-        # TODO: Implement actual database insertion
+        try:
+            appt = await create_appointment(
+                customer_id=customer["id"],
+                scheduled_date=date_str,
+                scheduled_time=time_str,
+                confirmation_code=confirmation_code,
+            )
 
-        return {
-            "success": True,
-            "appointment_id": appointment_id,
-            "confirmation_code": confirmation_code,
-        }
+            # 3. Create in Google Calendar
+            calendar_service = get_calendar_service()
+
+            # Parse datetimes
+            start_dt = datetime.fromisoformat(f"{date_str}T{time_str}")
+            end_dt = start_dt.replace(hour=start_dt.hour + 1)
+
+            calendar_service.create_event(
+                summary=f"{procedure} - {customer.get('name', 'Cliente')}",
+                description=f"Tel: {customer_id}\nCódigo: {confirmation_code}",
+                start_dt=start_dt,
+                end_dt=end_dt,
+            )
+
+            return {
+                "success": True,
+                "appointment_id": appt["id"],
+                "confirmation_code": confirmation_code,
+                "date": date_str,
+                "time": time_str,
+            }
+        except Exception as e:
+            logger.error("create_appointment_failed", error=str(e))
+            return {"success": False, "error": "Erro ao criar agendamento"}
 
     if tool_name == "cancel_appointment":
         confirmation_code = context.get("confirmation_code", "")
-        # TODO: Implement actual cancellation
+        if not confirmation_code:
+            return {"success": False, "error": "Código não fornecido"}
+
+        # 1. Find appointment
+        appt = await get_appointment_by_code(confirmation_code)
+        if not appt:
+            return {"success": False, "error": "Agendamento não encontrado"}
+
+        # 2. Cancel in Supabase
+        await cancel_appointment(appt["id"])
+
+        # 3. Cancel in GCal (TODO: need to store GCal Event ID in DB to delete specific event)
+        # For MVP, purely logging that manual check needed for GCal if not linked
+        logger.info("gcal_cancel_needed", appointment_id=appt["id"])
 
         return {
             "success": True,

@@ -214,3 +214,30 @@ async def cancel_appointment(appointment_id: str) -> dict[str, Any]:
         appointment_id=appointment_id,
     )
     return result.data[0]
+
+
+async def get_appointments_for_date(check_date: str) -> list[dict[str, Any]]:
+    """Get all appointments for a specific date.
+
+    Args:
+        check_date: Date in YYYY-MM-DD format.
+
+    Returns:
+        List of appointment records.
+    """
+    client = get_supabase_client()
+
+    result = (
+        client.table("appointments")
+        .select("*")
+        .eq("scheduled_date", check_date)
+        .neq("status", "canceled")  # Exclude canceled appointments
+        .execute()
+    )
+
+    logger.info(
+        "appointments_fetched_for_date",
+        date=check_date,
+        count=len(result.data),
+    )
+    return result.data
