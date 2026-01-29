@@ -232,3 +232,52 @@ async def get_context(phone: str) -> dict:
     except Exception as e:
         logger.error("debug_context_get_failed", phone=normalized_phone, error=str(e))
         return {"status": "error", "message": str(e)}
+
+
+@router.get("/debug/list-contexts")
+async def list_contexts() -> dict:
+    """List all active conversation contexts (debug/testing only).
+
+    Returns:
+        List of phone numbers with active contexts.
+    """
+    import json
+
+    import redis.asyncio as redis_client
+
+    from src.config.settings import get_settings
+
+    settings = get_settings()
+
+    try:
+        r = redis_client.from_url(settings.redis_url)
+        keys = await r.keys("conversation:*")
+
+        contexts = []
+        for key in keys[:20]:  # Limit to 20 to avoid overload
+            key_str = key.decode() if isinstance(key, bytes) else key
+            phone = key_str.replace("conversation:", "")
+
+            # Get context data
+            data = await r.get(key)
+            if data:
+                data_str = data.decode() if isinstance(data, bytes) else data
+                context = json.loads(data_str)
+                contexts.append(
+                    {
+                        "phone": phone,
+                        "state": context.get("current_state", "unknown"),
+                        "collected_data": context.get("collected_data", {}),
+                    }
+                )
+
+        await r.aclose()
+
+        return {
+            "status": "success",
+            "count": len(contexts),
+            "contexts": contexts,
+        }
+    except Exception as e:
+        logger.error("debug_list_contexts_failed", error=str(e))
+        return {"status": "error", "message": str(e)}

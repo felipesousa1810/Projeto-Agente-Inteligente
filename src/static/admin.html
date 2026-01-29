@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -193,7 +194,9 @@
         }
 
         @keyframes spin {
-            to { transform: rotate(360deg); }
+            to {
+                transform: rotate(360deg);
+            }
         }
 
         .empty-state {
@@ -237,6 +240,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <h1>🔧 Admin - Contexto</h1>
@@ -244,12 +248,7 @@
 
         <div class="card">
             <div class="input-group">
-                <input
-                    type="text"
-                    id="phone"
-                    placeholder="Número do telefone (ex: 5511999999999)"
-                    autocomplete="off"
-                >
+                <input type="text" id="phone" placeholder="Número do telefone (ex: 5511999999999)" autocomplete="off">
             </div>
 
             <div class="btn-group">
@@ -270,6 +269,19 @@
             <div id="contextData" class="context-data" style="display: none;">
                 <h3>📋 Dados Coletados</h3>
                 <div id="dataItems"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3 style="font-size: 1rem;">📱 Contextos Ativos</h3>
+                <button class="quick-btn" onclick="loadActiveContexts()">🔄 Atualizar</button>
+            </div>
+            <div id="activeContexts">
+                <div class="empty-state">
+                    <span class="loading"></span>
+                    <p style="margin-top: 10px;">Carregando...</p>
+                </div>
             </div>
         </div>
 
@@ -429,6 +441,8 @@
                 if (response.ok) {
                     statusEl.textContent = '🟢 Online';
                     statusEl.style.color = '#4ade80';
+                    // Also load active contexts when online
+                    loadActiveContexts();
                 } else {
                     statusEl.textContent = '🟡 Degraded';
                     statusEl.style.color = '#fbbf24';
@@ -438,6 +452,63 @@
                 statusEl.style.color = '#ef4444';
             }
         }
+
+        async function loadActiveContexts() {
+            const container = document.getElementById('activeContexts');
+            container.innerHTML = `
+                <div class="empty-state">
+                    <span class="loading"></span>
+                    <p style="margin-top: 10px;">Carregando...</p>
+                </div>
+            `;
+
+            try {
+                const response = await fetch(`${API_BASE}/webhook/debug/list-contexts`);
+                const data = await response.json();
+
+                if (data.status === 'success' && data.contexts.length > 0) {
+                    let html = '';
+                    for (const ctx of data.contexts) {
+                        const dataStr = Object.entries(ctx.collected_data || {})
+                            .map(([k, v]) => `${k}: ${v}`)
+                            .join(', ') || 'Nenhum dado';
+
+                        html += `
+                            <div class="data-item" style="cursor: pointer; flex-direction: column; align-items: flex-start; gap: 8px;"
+                                 onclick="selectPhone('${ctx.phone}')">
+                                <div style="display: flex; justify-content: space-between; width: 100%;">
+                                    <span class="label" style="font-family: monospace;">${ctx.phone}</span>
+                                    <span class="value" style="font-size: 0.8rem;">${ctx.state}</span>
+                                </div>
+                                <div style="font-size: 0.75rem; color: #666;">${dataStr}</div>
+                            </div>
+                        `;
+                    }
+                    container.innerHTML = html;
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">📭</div>
+                            <p>Nenhum contexto ativo</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">❌</div>
+                        <p>Erro ao carregar: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function selectPhone(phone) {
+            document.getElementById('phone').value = phone;
+            savePhone();
+            showResult(`📱 Número selecionado: ${phone}`, 'success');
+        }
     </script>
 </body>
+
 </html>
