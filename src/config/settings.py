@@ -38,8 +38,8 @@ class Settings(BaseSettings):
     jaeger_endpoint: str = "http://localhost:14268/api/traces"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
-    # Logfire
-    logfire_token: str = "pylf_v1_us_kGfKZlG5Hh6yVPLSsGHgG330mlNk8bZY9qBJsC2SFBpJ"
+    # Logfire (token via env var LOGFIRE_TOKEN)
+    logfire_token: str = ""
     enable_logfire: bool = True
 
     # Redis (Idempotency)
@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     # Application
     app_env: Literal["development", "staging", "production"] = "development"
     api_port: int = 8000
-    api_host: str = "0.0.0.0"
+    api_host: str = "0.0.0.0"  # nosec B104 - intentional for container deployment
 
     # Feature Flags
     enable_tracing: bool = True
@@ -78,4 +78,4 @@ def get_settings() -> Settings:
 
     Uses lru_cache for performance - settings are loaded once.
     """
-    return Settings()  # type: ignore[call-arg]
+    return Settings()

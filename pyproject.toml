@@ -32,6 +32,8 @@ dev = [
     "ruff>=0.2.0",
     "httpx>=0.26.0",
     "types-redis>=4.6.0",
+    "bandit>=1.7.0",
+    "pre-commit>=3.6.0",
 ]
 
 [build-system]
