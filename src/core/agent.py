@@ -8,7 +8,6 @@ from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIModel
 
 from src.config.agent_config import AgentConfig
-from src.config.settings import get_settings
 from src.contracts.agent_response import AgentResponse, IntentType
 from src.contracts.structured_output import StructuredAgentOutput
 from src.contracts.whatsapp_message import WhatsAppMessage
@@ -60,8 +59,6 @@ def create_agent(
     """
     if config is None:
         config = AgentConfig()
-
-    settings = get_settings()
 
     # Create OpenAI model with deterministic settings
     model = OpenAIModel(
@@ -257,7 +254,9 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
 
         # Combinar contexto com mensagem do usuário
         if context:
-            prompt_with_context = f"{context}\n\n**Mensagem do paciente:** {message.body}"
+            prompt_with_context = (
+                f"{context}\n\n**Mensagem do paciente:** {message.body}"
+            )
         else:
             prompt_with_context = message.body
 
@@ -292,8 +291,18 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
 
         # Detectar procedimento da mensagem (heurística simples)
         body_lower = message.body.lower()
-        procedures = ["limpeza", "clareamento", "restauração", "ortodontia", 
-                      "implante", "prótese", "canal", "extração", "emergência", "consulta"]
+        procedures = [
+            "limpeza",
+            "clareamento",
+            "restauração",
+            "ortodontia",
+            "implante",
+            "prótese",
+            "canal",
+            "extração",
+            "emergência",
+            "consulta",
+        ]
         for proc in procedures:
             if proc in body_lower and "procedure" not in fsm.collected_data:
                 fsm.set_data("procedure", proc.title())

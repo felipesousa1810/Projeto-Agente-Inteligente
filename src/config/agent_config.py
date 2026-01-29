@@ -81,7 +81,7 @@ Se contexto diz "Procedimento: Limpeza" e paciente diz "amanhã":
 
 ### Fluxo de perguntas (siga EXATAMENTE esta ordem):
 1. Se não tem procedimento → pergunte procedimento
-2. Se não tem data → pergunte data  
+2. Se não tem data → pergunte data
 3. Se não tem horário → pergunte horário
 4. Se tem tudo → confirme os dados
 """

@@ -158,4 +158,3 @@ async def webhook_health() -> dict:
         Health status dict.
     """
     return {"status": "healthy", "endpoint": "webhook"}
-

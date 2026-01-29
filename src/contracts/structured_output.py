@@ -16,7 +16,9 @@ class StructuredAgentOutput(BaseModel):
     garantindo detecção precisa de intent e extração de dados.
     """
 
-    intent: Literal["faq", "schedule", "reschedule", "cancel", "confirm", "greeting", "unknown"] = Field(
+    intent: Literal[
+        "faq", "schedule", "reschedule", "cancel", "confirm", "greeting", "unknown"
+    ] = Field(
         ...,
         description="Intenção detectada na mensagem do usuário",
     )

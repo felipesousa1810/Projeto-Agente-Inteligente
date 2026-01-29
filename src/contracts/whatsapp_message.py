@@ -1,7 +1,7 @@
 """WhatsApp Message Contract - Input validation for Evolution API webhook."""
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 

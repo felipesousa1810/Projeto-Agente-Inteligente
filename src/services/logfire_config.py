@@ -22,6 +22,7 @@ def configure_logfire() -> None:
         ENABLE_LOGFIRE: Se 'false', desabilita Logfire (default: true)
     """
     from src.config.settings import get_settings
+
     settings = get_settings()
 
     if not settings.enable_logfire:
@@ -56,9 +57,11 @@ def instrument_fastapi_with_logfire(app: object) -> None:
     Args:
         app: Instância FastAPI a ser instrumentada.
     """
-    enable_logfire = os.getenv("ENABLE_LOGFIRE", "true").lower() != "false"
+    from src.config.settings import get_settings
 
-    if not enable_logfire:
+    settings = get_settings()
+
+    if not settings.enable_logfire:
         return
 
     try:

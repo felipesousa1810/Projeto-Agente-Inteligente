@@ -5,7 +5,6 @@ lembre informações já coletadas entre mensagens.
 """
 
 import json
-from typing import Any
 
 import redis.asyncio as redis
 
@@ -65,9 +64,13 @@ class ConversationStateManager:
                 state_dict = json.loads(data)
                 fsm = StateMachine(
                     customer_id=phone,
-                    current_state=AppointmentState(state_dict.get("current_state", "initiated")),
+                    current_state=AppointmentState(
+                        state_dict.get("current_state", "initiated")
+                    ),
                     collected_data=state_dict.get("collected_data", {}),
-                    history=[AppointmentState(s) for s in state_dict.get("history", [])],
+                    history=[
+                        AppointmentState(s) for s in state_dict.get("history", [])
+                    ],
                 )
                 logger.info(
                     "conversation_state_loaded",
@@ -149,7 +152,9 @@ class ConversationStateManager:
         if not fsm.collected_data:
             return ""
 
-        lines = ["## 📋 Contexto da Conversa (DADOS JÁ COLETADOS - NÃO PERGUNTE NOVAMENTE!)"]
+        lines = [
+            "## 📋 Contexto da Conversa (DADOS JÁ COLETADOS - NÃO PERGUNTE NOVAMENTE!)"
+        ]
 
         data_labels = {
             "procedure": "Procedimento",
@@ -182,6 +187,7 @@ def get_conversation_state_manager() -> ConversationStateManager:
     global _state_manager
     if _state_manager is None:
         from src.config.settings import get_settings
+
         settings = get_settings()
         _state_manager = ConversationStateManager(redis_url=settings.redis_url)
     return _state_manager

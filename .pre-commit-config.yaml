@@ -19,16 +19,7 @@ repos:
       - id: check-merge-conflict
       - id: detect-private-key
 
-  # Type checking with mypy
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.8.0
-    hooks:
-      - id: mypy
-        additional_dependencies:
-          - pydantic
-          - pydantic-settings
-        args: [--ignore-missing-imports]
-        files: ^src/
+  # NOTE: mypy runs in CI only (too slow for pre-commit + requires all deps)
 
   # Security scanning
   - repo: https://github.com/PyCQA/bandit

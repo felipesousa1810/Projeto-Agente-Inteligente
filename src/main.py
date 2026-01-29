@@ -8,7 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.config.settings import get_settings
 from src.handlers.webhook import router as webhook_router
-from src.services.logfire_config import configure_logfire, instrument_fastapi_with_logfire
+from src.services.logfire_config import (
+    configure_logfire,
+)
 from src.services.observability import instrument_fastapi, setup_tracing
 from src.utils.logger import get_logger, setup_logging
 
