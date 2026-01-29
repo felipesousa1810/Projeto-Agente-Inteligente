@@ -127,7 +127,7 @@ class NLG:
                 f"Humanize esta mensagem mantendo TODOS os dados:\n\n{template_text}",
                 usage_limits=UsageLimits(
                     request_limit=2,  # Max 2 attempts
-                    token_limit=1024,  # Keep it fast
+                    total_tokens_limit=1024,  # Keep it fast
                 ),
             )
 

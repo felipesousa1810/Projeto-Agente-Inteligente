@@ -170,7 +170,7 @@ class NLU:
                 prompt,
                 usage_limits=UsageLimits(
                     request_limit=3,  # Max 3 LLM requests for NLU
-                    token_limit=1024,  # NLU should be fast
+                    total_tokens_limit=1024,  # NLU should be fast
                 ),
             )
 
