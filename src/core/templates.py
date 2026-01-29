@@ -19,8 +19,7 @@ TEMPLATES: dict[str, str] = {
         "responder dúvidas sobre tratamentos, ou ajudar com seu agendamento."
     ),
     "denied_restart": (
-        "Sem problemas! 😊 Se precisar de algo, é só me chamar. "
-        "Como posso ajudar você?"
+        "Sem problemas! 😊 Se precisar de algo, é só me chamar. Como posso ajudar você?"
     ),
     # Scheduling flow
     "ask_procedure": (
@@ -81,9 +80,9 @@ TEMPLATES: dict[str, str] = {
     ),
     # FAQ responses
     "faq_response": (
-        "Sobre {procedure}:\n\n{answer}\n\n" "Posso ajudar com mais alguma coisa?"
+        "Sobre {procedure}:\n\n{answer}\n\nPosso ajudar com mais alguma coisa?"
     ),
-    "faq_generic": ("{answer}\n\n" "Posso ajudar com algo mais?"),
+    "faq_generic": ("{answer}\n\nPosso ajudar com algo mais?"),
     # Clarification
     "clarify": (
         "Desculpe, não entendi bem. 🤔\n\n"
