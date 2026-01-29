@@ -1,6 +1,21 @@
-# 🤖 WhatsApp Agent - Agente de Atendimento
+# 🤖 WhatsApp Agent
 
-Agente de atendimento via WhatsApp com Pydantic AI para agendamentos.
+![CI Status](https://github.com/felipesousa1810/Projeto-Agente-Inteligente/actions/workflows/ci.yml/badge.svg)
+![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Code Style](https://img.shields.io/badge/code%20style-ruff-000000.svg)
+
+Agente de atendimento inteligente via WhatsApp, construído com **Pydantic AI**, **Supabase** e **Google Calendar**.
+
+## ✨ Features
+
+- **Decisões Determinísticas**: Máquina de Estados (FSM) garante fluxo lógico 100% previsível.
+- **NLU & NLG**: Separação clara entre entendimento (Natural Language Understanding) e geração de resposta (Natural Language Generation).
+- **Integração Real**:
+  - **Supabase**: Banco de dados PostgreSQL com RLS para segurança.
+  - **Google Calendar**: Agendamento real com verificação de conflitos.
+- **Observabilidade**: Logs estruturados e rastreamento de execução.
+- **Segurança**: Políticas RLS, timeouts em requisições e validação rigorosa de dados.
 
 ## 🚀 Quick Start
 
@@ -57,30 +72,16 @@ pytest
 
 # Com coverage
 pytest --cov=src --cov-report=html
-
-# Testes específicos
-pytest tests/contract/ -v
-pytest tests/unit/ -v
 ```
 
-## 📁 Estrutura
+## 🤝 Contributing
 
-```
-src/
-├── main.py              # FastAPI app
-├── config/              # Configurações
-├── contracts/           # Schemas Pydantic
-├── core/               # Lógica de negócio
-├── services/           # Integrações externas
-├── handlers/           # Endpoints
-└── utils/              # Utilitários
-```
+Veja nosso guia de contribuição em [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-## 📋 Documentação
+## 📄 License
 
-- [SPEC.md](./SPEC.md) - Especificação técnica completa
-- [AGENTS.md](./AGENTS.md) - Guia para agentes de código
+Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](./LICENSE) para detalhes.
 
-## 📄 Licença
+## 📝 Changelog
 
-MIT
+Acompanhe as atualizações no [CHANGELOG.md](./CHANGELOG.md).
