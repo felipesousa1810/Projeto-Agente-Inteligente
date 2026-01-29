@@ -226,6 +226,7 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
     """Process incoming WhatsApp message and return agent response.
 
     This is the main entry point for message processing.
+    Now with conversation context memory via FSM stored in Redis.
 
     Args:
         message: Validated WhatsApp message.
@@ -233,6 +234,8 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
     Returns:
         AgentResponse with intent, reply, and extracted data.
     """
+    from src.services.conversation_state import get_conversation_state_manager
+
     trace_id = str(uuid.uuid4())
 
     logger.info(
@@ -245,15 +248,35 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
     start_time = datetime.now()
 
     try:
+        # 1. Recuperar estado da conversa do Redis
+        state_manager = get_conversation_state_manager()
+        fsm = await state_manager.get_or_create(message.from_number)
+
+        # 2. Construir contexto para o agente
+        context = state_manager.build_context_prompt(fsm)
+
+        # Combinar contexto com mensagem do usuário
+        if context:
+            prompt_with_context = f"{context}\n\n**Mensagem do paciente:** {message.body}"
+        else:
+            prompt_with_context = message.body
+
+        logger.info(
+            "process_message_with_context",
+            trace_id=trace_id,
+            has_context=bool(context),
+            collected_data=fsm.collected_data,
+        )
+
         # Create dependencies
         deps = AgentDependencies(
             customer_id=message.from_number,
             trace_id=trace_id,
         )
 
-        # Get agent and run
+        # Get agent and run with context
         agent = get_agent()
-        result = await agent.run(message.body, deps=deps)
+        result = await agent.run(prompt_with_context, deps=deps)
 
         # Parse structured output from Pydantic AI
         output: StructuredAgentOutput = result.output
@@ -261,8 +284,26 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
         # Map structured intent to IntentType enum
         intent = INTENT_MAPPING.get(output.intent, IntentType.UNKNOWN)
 
-        # Build extracted_data from structured output
-        extracted_data: dict[str, str] = {}
+        # 3. Atualizar FSM com dados extraídos
+        if output.extracted_date:
+            fsm.set_data("date", output.extracted_date)
+        if output.extracted_time:
+            fsm.set_data("time", output.extracted_time)
+
+        # Detectar procedimento da mensagem (heurística simples)
+        body_lower = message.body.lower()
+        procedures = ["limpeza", "clareamento", "restauração", "ortodontia", 
+                      "implante", "prótese", "canal", "extração", "emergência", "consulta"]
+        for proc in procedures:
+            if proc in body_lower and "procedure" not in fsm.collected_data:
+                fsm.set_data("procedure", proc.title())
+                break
+
+        # 4. Salvar estado atualizado no Redis
+        await state_manager.save(message.from_number, fsm)
+
+        # Build extracted_data from structured output + FSM
+        extracted_data: dict[str, str] = dict(fsm.collected_data)
         if output.extracted_date:
             extracted_data["date"] = output.extracted_date
         if output.extracted_time:
@@ -287,6 +328,7 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
             intent=response.intent.value,
             confidence=response.confidence,
             latency_ms=elapsed_ms,
+            extracted_data=extracted_data,
         )
 
         return response

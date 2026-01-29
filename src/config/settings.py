@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     jaeger_endpoint: str = "http://localhost:14268/api/traces"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
+    # Logfire
+    logfire_token: str = "pylf_v1_us_kGfKZlG5Hh6yVPLSsGHgG330mlNk8bZY9qBJsC2SFBpJ"
+    enable_logfire: bool = True
+
     # Redis (Idempotency)
     redis_url: str = "redis://localhost:6379"
 
