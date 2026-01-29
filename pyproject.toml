@@ -21,6 +21,9 @@ dependencies = [
     "opentelemetry-exporter-jaeger>=1.21.0",
     "opentelemetry-instrumentation-fastapi>=0.43b0",
     "deprecated>=1.2.0",
+    "google-api-python-client>=2.0.0",
+    "google-auth>=2.0.0",
+    "google-auth-oauthlib>=1.0.0",
 ]
 
 [project.optional-dependencies]
