@@ -97,11 +97,17 @@ class WhatsAppMessage(BaseModel):
         remote_jid = data.key.remoteJid
         phone = remote_jid.split("@")[0] if "@" in remote_jid else remote_jid
 
+        # Note: messageTimestamp is already converted to datetime by validator
+        # Cast is for mypy since declared type is int | datetime
+        timestamp = data.messageTimestamp
+        if not isinstance(timestamp, datetime):
+            timestamp = datetime.fromtimestamp(timestamp)
+
         return cls(
             message_id=data.key.id,
             from_number=phone,
             body=body,
-            timestamp=data.messageTimestamp,
+            timestamp=timestamp,
             push_name=data.pushName,
         )
 
