@@ -7,7 +7,7 @@ from typing import Any
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIModel
 
-from src.config.agent_config import AgentConfig
+from src.config.agent_config import AgentConfig, get_dynamic_system_prompt
 from src.contracts.agent_response import AgentResponse, IntentType
 from src.contracts.structured_output import StructuredAgentOutput
 from src.contracts.whatsapp_message import WhatsAppMessage
@@ -66,10 +66,13 @@ def create_agent(
         # api_key is automatically loaded from OPENAI_API_KEY env var
     )
 
+    # Get dynamic system prompt with current date/time
+    dynamic_prompt = get_dynamic_system_prompt()
+
     # Create agent with structured output type
     agent: Agent[AgentDependencies, StructuredAgentOutput] = Agent(
         model=model,
-        system_prompt=config.system_prompt,
+        system_prompt=dynamic_prompt,
         deps_type=AgentDependencies,
         output_type=StructuredAgentOutput,
         retries=0,  # External retry control

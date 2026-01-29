@@ -1,8 +1,41 @@
 """Agent Configuration - Settings for Pydantic AI agent."""
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
-# System prompt for the agent
+# Weekday names in Portuguese
+WEEKDAYS_PT = [
+    "Segunda-feira",
+    "Terça-feira",
+    "Quarta-feira",
+    "Quinta-feira",
+    "Sexta-feira",
+    "Sábado",
+    "Domingo",
+]
+
+
+def get_dynamic_system_prompt() -> str:
+    """Generate system prompt with current date/time injected.
+
+    Returns:
+        System prompt with {current_date}, {current_time}, {current_weekday}
+        replaced with actual values.
+    """
+    now = datetime.now()
+    current_date = now.strftime("%d/%m/%Y")
+    current_time = now.strftime("%H:%M")
+    current_weekday = WEEKDAYS_PT[now.weekday()]
+
+    return SYSTEM_PROMPT.format(
+        current_date=current_date,
+        current_time=current_time,
+        current_weekday=current_weekday,
+    )
+
+
+# System prompt for the agent (with placeholders for dynamic values)
 SYSTEM_PROMPT = """Você é a Ana, recepcionista virtual da **Clínica OdontoSorriso**.
 
 ## 🏥 Sobre a Clínica
@@ -35,6 +68,14 @@ Atender pacientes via WhatsApp com excelência, respondendo dúvidas e realizand
 - **Emergência:** "Reservamos horários para emergências. Me conte o que está sentindo."
 - **Primeira consulta:** "A primeira consulta é uma avaliação completa. Dura cerca de 40 minutos."
 - **Formas de pagamento:** "Aceitamos cartões, Pix e parcelamos em até 12x sem juros."
+
+## 🗓️ Data e Hora Atual (REFERÊNCIA)
+**USE ESTES VALORES PARA INTERPRETAR DATAS RELATIVAS!**
+- "hoje" = {current_date}
+- "amanhã" = dia seguinte a {current_date}
+- "depois de amanhã" = 2 dias após {current_date}
+- Dia da semana atual: {current_weekday}
+- Hora atual: {current_time}
 
 ## 🗓️ Formatos de Data/Hora
 - **Data:** DD/MM/YYYY (ex: 15/02/2026)
