@@ -1,4 +1,4 @@
-"""Pydantic AI Agent - Deterministic scheduling agent."""
+"""Pydantic AI Agent - Deterministic scheduling agent for OdontoSorriso clinic."""
 
 import uuid
 from datetime import date, datetime, time
@@ -10,10 +10,22 @@ from pydantic_ai.models.openai import OpenAIModel
 from src.config.agent_config import AgentConfig
 from src.config.settings import get_settings
 from src.contracts.agent_response import AgentResponse, IntentType
+from src.contracts.structured_output import StructuredAgentOutput
 from src.contracts.whatsapp_message import WhatsAppMessage
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Mapping from structured output intent to IntentType enum
+INTENT_MAPPING: dict[str, IntentType] = {
+    "faq": IntentType.FAQ,
+    "schedule": IntentType.SCHEDULE,
+    "reschedule": IntentType.RESCHEDULE,
+    "cancel": IntentType.CANCEL,
+    "confirm": IntentType.CONFIRM,
+    "greeting": IntentType.UNKNOWN,  # Map greeting to UNKNOWN for now
+    "unknown": IntentType.UNKNOWN,
+}
 
 
 # Agent dependencies (injected at runtime)
@@ -37,14 +49,14 @@ class AgentDependencies:
 
 def create_agent(
     config: AgentConfig | None = None,
-) -> Agent[AgentDependencies, dict[str, Any]]:
+) -> Agent[AgentDependencies, StructuredAgentOutput]:
     """Create and configure the Pydantic AI agent.
 
     Args:
         config: Optional agent configuration. Uses defaults if not provided.
 
     Returns:
-        Configured Agent instance.
+        Configured Agent instance with structured output.
     """
     if config is None:
         config = AgentConfig()
@@ -57,12 +69,12 @@ def create_agent(
         # api_key is automatically loaded from OPENAI_API_KEY env var
     )
 
-
-    # Create agent
-    agent: Agent[AgentDependencies, dict[str, Any]] = Agent(
+    # Create agent with structured output type
+    agent: Agent[AgentDependencies, StructuredAgentOutput] = Agent(
         model=model,
         system_prompt=config.system_prompt,
         deps_type=AgentDependencies,
+        output_type=StructuredAgentOutput,
         retries=0,  # External retry control
     )
 
@@ -195,14 +207,14 @@ def create_agent(
 
 
 # Global agent instance (lazy initialization)
-_agent: Agent[AgentDependencies, dict[str, Any]] | None = None
+_agent: Agent[AgentDependencies, StructuredAgentOutput] | None = None
 
 
-def get_agent() -> Agent[AgentDependencies, dict[str, Any]]:
+def get_agent() -> Agent[AgentDependencies, StructuredAgentOutput]:
     """Get or create the global agent instance.
 
     Returns:
-        Agent instance.
+        Agent instance with structured output.
     """
     global _agent
     if _agent is None:
@@ -243,23 +255,28 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
         agent = get_agent()
         result = await agent.run(message.body, deps=deps)
 
-        # Parse result - Pydantic AI uses .output, not .data
-        # The output is a string (text response from LLM)
-        output_text = str(result.output) if result.output else ""
+        # Parse structured output from Pydantic AI
+        output: StructuredAgentOutput = result.output
 
-        # Since we're not using structured output, parse intent from text
-        # For now, default to UNKNOWN and use the raw text as reply
-        intent = IntentType.UNKNOWN
+        # Map structured intent to IntentType enum
+        intent = INTENT_MAPPING.get(output.intent, IntentType.UNKNOWN)
 
-        # Build response
+        # Build extracted_data from structured output
+        extracted_data: dict[str, str] = {}
+        if output.extracted_date:
+            extracted_data["date"] = output.extracted_date
+        if output.extracted_time:
+            extracted_data["time"] = output.extracted_time
+
+        # Build response from structured output
         response = AgentResponse(
             trace_id=trace_id,
             intent=intent,
-            reply_text=output_text or "Não consegui processar sua mensagem.",
-            confidence=0.8,
+            reply_text=output.reply_text or "Não consegui processar sua mensagem.",
+            confidence=output.confidence,
             appointment_id=None,
-            extracted_data={},
-            clarification_needed=False,
+            extracted_data=extracted_data,
+            clarification_needed=output.clarification_needed,
         )
 
         elapsed_ms = (datetime.now() - start_time).total_seconds() * 1000
