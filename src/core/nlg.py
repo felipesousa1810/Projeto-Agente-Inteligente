@@ -10,8 +10,9 @@ Architecture principle: Templates provide structure, NLG adds warmth.
 """
 
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, UsageLimits
+from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.usage import UsageLimits
 
 from src.utils.logger import get_logger
 
@@ -63,7 +64,7 @@ def _create_nlg_agent() -> Agent[None, NLGOutput]:
 
     agent: Agent[None, NLGOutput] = Agent(
         model=model,
-        output_type=NLGOutput,
+        result_type=NLGOutput,
         system_prompt=NLG_SYSTEM_PROMPT,
         retries=1,
     )
@@ -131,7 +132,7 @@ class NLG:
                 ),
             )
 
-            humanized = result.output.humanized_text
+            humanized = result.data.humanized_text
 
             logger.info(
                 "nlg_humanize_complete",

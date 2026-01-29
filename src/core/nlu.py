@@ -9,8 +9,9 @@ Architecture principle: LLM extracts, Code decides.
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, UsageLimits
+from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.usage import UsageLimits
 
 from src.utils.logger import get_logger
 
@@ -101,7 +102,7 @@ def _create_nlu_agent() -> Agent[None, NLUOutput]:
 
     agent: Agent[None, NLUOutput] = Agent(
         model=model,
-        output_type=NLUOutput,
+        result_type=NLUOutput,
         system_prompt=NLU_SYSTEM_PROMPT,
         retries=1,  # One retry on validation failure
     )
@@ -174,7 +175,7 @@ class NLU:
                 ),
             )
 
-            output = result.output
+            output = result.data
 
             logger.info(
                 "nlu_extract_complete",
