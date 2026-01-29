@@ -59,7 +59,7 @@ Quando a mensagem já está boa, retorne-a com pequenos ajustes ou igual.
 
 def _create_nlg_agent() -> Agent[None, NLGOutput]:
     """Create the NLG agent."""
-    model = OpenAIModel("gpt-4o-mini")
+    model = OpenAIModel("gpt-4.1-mini-2025-04-14")
 
     agent: Agent[None, NLGOutput] = Agent(
         model=model,

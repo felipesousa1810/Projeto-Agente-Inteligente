@@ -97,7 +97,7 @@ PROCEDIMENTOS CONHECIDOS:
 
 def _create_nlu_agent() -> Agent[None, NLUOutput]:
     """Create the NLU agent with structured output."""
-    model = OpenAIModel("gpt-4o-mini")
+    model = OpenAIModel("gpt-4.1-mini-2025-04-14")
 
     agent: Agent[None, NLUOutput] = Agent(
         model=model,
