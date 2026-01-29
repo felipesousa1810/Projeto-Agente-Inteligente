@@ -160,6 +160,21 @@ async def webhook_health() -> dict:
     return {"status": "healthy", "endpoint": "webhook"}
 
 
+def _normalize_phone(phone: str) -> str:
+    """Normalize phone to E.164 format (same as WhatsAppMessage validator).
+
+    Args:
+        phone: Phone number in any format.
+
+    Returns:
+        Phone in E.164 format (e.g., +5511999999999).
+    """
+    cleaned = "".join(c for c in phone if c.isdigit() or c == "+")
+    if not cleaned.startswith("+"):
+        cleaned = f"+{cleaned}"
+    return cleaned
+
+
 @router.delete("/debug/clear-context/{phone}")
 async def clear_context(phone: str) -> dict:
     """Clear conversation context for a phone number (debug/testing only).
@@ -172,13 +187,20 @@ async def clear_context(phone: str) -> dict:
     """
     from src.services.conversation_state import get_conversation_state_manager
 
+    # Normalize phone to match Redis key format
+    normalized_phone = _normalize_phone(phone)
+
     try:
         state_manager = get_conversation_state_manager()
-        await state_manager.clear(phone)
-        logger.info("debug_context_cleared", phone=phone)
-        return {"status": "success", "message": f"Context cleared for {phone}"}
+        await state_manager.clear(normalized_phone)
+        logger.info("debug_context_cleared", phone=normalized_phone)
+        return {
+            "status": "success",
+            "message": f"Context cleared for {normalized_phone}",
+            "normalized_phone": normalized_phone,
+        }
     except Exception as e:
-        logger.error("debug_context_clear_failed", phone=phone, error=str(e))
+        logger.error("debug_context_clear_failed", phone=normalized_phone, error=str(e))
         return {"status": "error", "message": str(e)}
 
 
@@ -194,16 +216,19 @@ async def get_context(phone: str) -> dict:
     """
     from src.services.conversation_state import get_conversation_state_manager
 
+    # Normalize phone to match Redis key format
+    normalized_phone = _normalize_phone(phone)
+
     try:
         state_manager = get_conversation_state_manager()
-        fsm = await state_manager.get_or_create(phone)
+        fsm = await state_manager.get_or_create(normalized_phone)
         return {
             "status": "success",
-            "phone": phone,
+            "phone": normalized_phone,
             "current_state": fsm.current_state.value,
             "collected_data": fsm.collected_data,
             "history": [s.value for s in fsm.history],
         }
     except Exception as e:
-        logger.error("debug_context_get_failed", phone=phone, error=str(e))
+        logger.error("debug_context_get_failed", phone=normalized_phone, error=str(e))
         return {"status": "error", "message": str(e)}
