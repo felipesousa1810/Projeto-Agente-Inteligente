@@ -64,7 +64,7 @@ def _create_nlg_agent() -> Agent[None, NLGOutput]:
 
     agent: Agent[None, NLGOutput] = Agent(
         model=model,
-        result_type=NLGOutput,
+        output_type=NLGOutput,
         system_prompt=NLG_SYSTEM_PROMPT,
         retries=1,
     )

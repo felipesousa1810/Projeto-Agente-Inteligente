@@ -102,7 +102,7 @@ def _create_nlu_agent() -> Agent[None, NLUOutput]:
 
     agent: Agent[None, NLUOutput] = Agent(
         model=model,
-        result_type=NLUOutput,
+        output_type=NLUOutput,
         system_prompt=NLU_SYSTEM_PROMPT,
         retries=1,  # One retry on validation failure
     )
