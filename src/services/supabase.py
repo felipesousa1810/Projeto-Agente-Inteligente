@@ -28,21 +28,22 @@ def get_supabase_client() -> Client:
 
     settings = get_settings()
 
-    if not settings.supabase_url or not settings.supabase_key:
+    # Prioritize service key for backend operations to bypass RLS
+    key = settings.supabase_service_key or settings.supabase_key
+
+    if not key:
         logger.warning(
             "supabase_not_configured",
             message="Supabase credentials not set. Database operations will fail.",
         )
-        # Return a mock or raise based on environment
         if settings.is_development:
             logger.info("supabase_mock_mode", message="Using mock mode in development")
-            # We'll still try to create - will fail gracefully
         else:
             raise ValueError("Supabase credentials are required in production")
 
     _supabase_client = create_client(
         settings.supabase_url,
-        settings.supabase_key,
+        key,
     )
 
     logger.info("supabase_client_created")
