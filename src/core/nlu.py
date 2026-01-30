@@ -167,6 +167,7 @@ class NLU:
         )
 
         try:
+            # output = result.data  # pydantic-ai v1.50.0 uses .data
             result = await self.agent.run(
                 prompt,
                 usage_limits=UsageLimits(

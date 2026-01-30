@@ -85,21 +85,66 @@ async def whatsapp_webhook(
                     error=str(redis_err),
                 )
 
-            # 3. Processar mensagem com agente
+            # 3. Create or Get Customer (Ensure customer exists)
+            from src.services.supabase import get_or_create_customer, save_message
+
+            try:
+                # We need customer ID for the message table
+                customer = await get_or_create_customer(message.from_number)
+                customer_id = customer["id"]
+            except Exception as db_err:
+                logger.error("customer_creation_failed", error=str(db_err))
+                # Fallback to recording without customer ID if possible, or fail gracefully
+                # For now, we'll try to proceed but saving message requires customer_id
+                raise db_err
+
+            # 4. Save INCOMING message
+            try:
+                await save_message(
+                    message_id=message.message_id,
+                    customer_id=customer_id,
+                    direction="incoming",
+                    body=message.body,
+                    intent=None,  # Will update later or save as is
+                    trace_id=span.get_span_context().trace_id or "unknown",
+                )
+            except Exception as save_err:
+                logger.error("save_incoming_failed", error=str(save_err))
+                # Don't block processing if save fails, but log it
+
+            # 5. Processar mensagem com agente
             response = await process_message(message)
 
             span.set_attribute("intent", response.intent.value)
             span.set_attribute("confidence", response.confidence)
             span.set_attribute("trace_id", response.trace_id)
 
-            # 4. Enviar resposta (assíncrono)
+            # 6. Save OUTGOING message (Response)
+            try:
+                # Generate a unique ID for the outgoing message
+                import uuid
+
+                outgoing_id = f"MSG-{uuid.uuid4().hex[:16].upper()}"
+
+                await save_message(
+                    message_id=outgoing_id,
+                    customer_id=customer_id,
+                    direction="outgoing",
+                    body=response.reply_text,
+                    intent=response.intent.value,
+                    trace_id=response.trace_id,
+                )
+            except Exception as save_out_err:
+                logger.error("save_outgoing_failed", error=str(save_out_err))
+
+            # 7. Enviar resposta (assíncrono)
             background_tasks.add_task(
                 send_whatsapp_reply,
                 message.from_number,
                 response.reply_text,
             )
 
-            # 5. Marcar como processado no Redis
+            # 8. Marcar como processado no Redis
             try:
                 idempotency = get_idempotency_manager()
                 await idempotency.mark_processed(
