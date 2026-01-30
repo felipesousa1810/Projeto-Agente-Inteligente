@@ -46,7 +46,11 @@ def get_supabase_client() -> Client:
         key,
     )
 
-    logger.info("supabase_client_created")
+    logger.info(
+        "supabase_client_created",
+        using_service_key=key == settings.supabase_service_key,
+        key_preview=key[:5] + "..." if key else "None",
+    )
     return _supabase_client
 
 
