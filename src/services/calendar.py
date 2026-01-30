@@ -27,7 +27,10 @@ class GoogleCalendarService:
         """Initialize service with credentials."""
         self.settings = get_settings()
         self.creds = self._authenticate()
-        self.service = build("calendar", "v3", credentials=self.creds)
+        if self.creds:
+            self.service = build("calendar", "v3", credentials=self.creds)
+        else:
+            self.service = None
 
     def _authenticate(self) -> Any:
         """Authenticate using Service Account or OAuth."""
@@ -37,14 +40,28 @@ class GoogleCalendarService:
         service_account_info = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
         if service_account_info:
             try:
-                if service_account_info.startswith("{"):
-                    info = json.loads(service_account_info)
-                    return service_account.Credentials.from_service_account_info(
-                        info, scopes=SCOPES
-                    )
+                # Handle JSON string directly
+                if service_account_info.strip().startswith("{"):
+                    try:
+                        info = json.loads(service_account_info)
+                        return service_account.Credentials.from_service_account_info(
+                            info, scopes=SCOPES
+                        )
+                    except json.JSONDecodeError as e:
+                        logger.error("gcal_auth_json_error", error=str(e))
+                        return None
+
+                # Handle file path
                 elif os.path.exists(service_account_info):
                     return service_account.Credentials.from_service_account_file(
                         service_account_info, scopes=SCOPES
+                    )
+                else:
+                    logger.warning(
+                        "gcal_auth_invalid_path",
+                        path=service_account_info[:20] + "..."
+                        if service_account_info
+                        else "None",
                     )
             except Exception as e:
                 logger.error("gcal_auth_error", error=str(e), type="service_account")
