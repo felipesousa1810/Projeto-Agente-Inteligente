@@ -26,6 +26,17 @@ class GoogleCalendarService:
     def __init__(self) -> None:
         """Initialize service with credentials."""
         self.settings = get_settings()
+
+        # Mock Mode
+        if self.settings.mock_calendar:
+            logger.warning(
+                "gcal_mock_mode_enabled",
+                message="Using MOCK CALENDAR. No real events will be created.",
+            )
+            self.service = None
+            self.creds = None
+            return
+
         self.creds = self._authenticate()
         if self.creds:
             self.service = build("calendar", "v3", credentials=self.creds)
@@ -98,6 +109,9 @@ class GoogleCalendarService:
         Returns:
             List of busy slots [{'start': datetime, 'end': datetime}]
         """
+        if self.settings.mock_calendar:
+            return []  # Always available in mock mode
+
         if not self.service:
             logger.warning("gcal_service_unavailable")
             return []
@@ -116,7 +130,7 @@ class GoogleCalendarService:
                 "timeMin": time_min,
                 "timeMax": time_max,
                 "timeZone": "America/Sao_Paulo",
-                "items": [{"id": "primary"}],
+                "items": [{"id": self.settings.google_calendar_id}],
             }
 
             events_result = self.service.freebusy().query(body=body).execute()
@@ -150,6 +164,11 @@ class GoogleCalendarService:
         Returns:
             Event ID or None if failed.
         """
+        if self.settings.mock_calendar:
+            mock_id = f"MOCK-EVENT-{datetime.now().timestamp()}"
+            logger.info("gcal_mock_event_created", event_id=mock_id, summary=summary)
+            return mock_id
+
         if not self.service:
             return None
 
@@ -171,7 +190,12 @@ class GoogleCalendarService:
 
         try:
             event_result = (
-                self.service.events().insert(calendarId="primary", body=event).execute()
+                self.service.events()
+                .insert(
+                    calendarId=self.settings.google_calendar_id,
+                    body=event,
+                )
+                .execute()
             )
             event_id = event_result.get("id")
             logger.info("gcal_event_created", event_id=event_id)
@@ -189,12 +213,16 @@ class GoogleCalendarService:
         Returns:
             True if successful.
         """
+        if self.settings.mock_calendar:
+            logger.info("gcal_mock_event_canceled", event_id=event_id)
+            return True
+
         if not self.service:
             return False
 
         try:
             self.service.events().delete(
-                calendarId="primary", eventId=event_id
+                calendarId=self.settings.google_calendar_id, eventId=event_id
             ).execute()
             logger.info("gcal_event_canceled", event_id=event_id)
             return True

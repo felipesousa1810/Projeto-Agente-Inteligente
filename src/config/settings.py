@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     logfire_token: str = ""
     enable_logfire: bool = True
 
+    # Google Calendar
+    google_calendar_id: str = "primary"
+    mock_calendar: bool = False
+
     # Redis (Idempotency)
     redis_url: str = "redis://localhost:6379"
 

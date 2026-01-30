@@ -239,9 +239,9 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
         AgentResponse with intent, reply, and extracted data.
     """
     from src.core.decision_engine import get_decision_engine
-    from src.core.nlg import NLG
+    from src.core.nlg import generate_response
     from src.core.nlu import NLU
-    from src.core.templates import format_template, get_faq_answer
+    from src.core.templates import get_faq_answer
     from src.services.conversation_state import get_conversation_state_manager
 
     trace_id = str(uuid.uuid4())
@@ -321,9 +321,9 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
             action.context.update(tool_result)
 
         # =====================================================
-        # STEP 5: Format template (CODE)
+        # STEP 5: Generate Response (Guardrails NLG)
         # =====================================================
-        # Handle special cases
+        # Handle special cases for context enrichment
         if action.template_key == "faq_response":
             faq_answer = get_faq_answer(nlu_output.extracted_procedure)
             action.context["answer"] = faq_answer
@@ -339,20 +339,9 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
                 slots = ", ".join(slots)
             action.context["available_slots"] = slots
 
-        template_text = format_template(action.template_key, **action.context)
-
-        logger.info(
-            "template_formatted",
-            trace_id=trace_id,
-            template_key=action.template_key,
-            template_length=len(template_text),
-        )
-
-        # =====================================================
-        # STEP 6: NLG - Humanize response (LLM)
-        # =====================================================
-        nlg = NLG(skip_humanization=False)  # Set to True for faster responses
-        humanized_response = await nlg.humanize(template_text)
+        # Generate the response using PydanticAI Guardrails
+        # The LLM generates the text strictly adhering to the schema for this ActionType
+        humanized_response = await generate_response(action)
 
         # =====================================================
         # STEP 7: Update FSM state if action specifies

@@ -1,158 +1,141 @@
-"""NLG (Natural Language Generation) - Humanize templates.
+"""NLG (Natural Language Generation) - Guardrails Architecture.
 
-This module transforms base templates into natural, human-like responses.
-It uses an LLM but with strict constraints:
-- Data in the template CANNOT be changed
-- Only style and phrasing can be adjusted
-- The meaning must remain identical
+This module is responsible for generating natural language responses that STRICTLY
+adhere to the structural constraints defined in `src/core/guardrails.py`.
 
-Architecture principle: Templates provide structure, NLG adds warmth.
+Architecture:
+1. Input: Action (from Decision Engine) + Context
+2. Process: LLM generates content fitting the specific Guardrail Pydantic model
+3. Output: Validated, structured response (JSON) -> Converted to text for user
 """
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
-from pydantic_ai.usage import UsageLimits
 
+from src.config.settings import get_settings
+from src.core.decision_engine import Action, ActionType
+from src.core.guardrails import (
+    AppointmentScheduled,
+    AskForInfo,
+    ConfirmAppointment,
+    GeneralMessage,
+    OfferSlots,
+    ResponseGuardrail,
+)
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class NLGOutput(BaseModel):
-    """Structured output from NLG.
+class ResponseSystemPrompt:
+    """System prompts for the NLG Agent."""
 
-    Contains the humanized text that maintains all original data.
-    """
-
-    humanized_text: str = Field(
-        ...,
-        description="The humanized version of the template. Must contain ALL original data.",
-        min_length=1,
-        max_length=2048,
-    )
+    BASE = """Você é a Ana, assistente virtual da Clínica Odontológica.
+Sua persona: Profissional, acolhedora, eficiente e direta.
+NUNCA invente informações. Use apenas o contexto fornecido.
+Seu objetivo é gerar a resposta para o usuário seguindo ESTRITAMENTE o schema solicitado."""
 
 
-# NLG system prompt - strict about preserving data
-NLG_SYSTEM_PROMPT = """Você é um assistente de linguagem natural para uma clínica odontológica.
-
-Sua ÚNICA tarefa é humanizar mensagens de forma LEVE, mantendo a estrutura original.
-
-REGRAS CRÍTICAS DE SEGURANÇA:
-1. NUNCA invente feedback do usuário (ex: "Que bom que gostou").
-2. NUNCA altere dados (datas, horários, nomes).
-3. Se a mensagem for uma pergunta técnica ou solicitação de dados, seja DIRETO.
-4. Evite excesso de entusiasmo ou emojis exagerados.
-5. Mantenha a resposta O MAIS PRÓXIMO POSSÍVEL do template original.
-
-OBJETIVO: Apenas torne a frase gramaticalmente fluida, sem adicionar "personalidade" excessiva.
-"""
-
-
-def _create_nlg_agent() -> Agent[None, NLGOutput]:
-    """Create the NLG agent."""
-    model = OpenAIModel("gpt-4.1-mini-2025-04-14")
-
-    agent: Agent[None, NLGOutput] = Agent(
-        model=model,
-        output_type=NLGOutput,  # type: ignore
-        system_prompt=NLG_SYSTEM_PROMPT,
-        retries=1,
-    )
-
-    return agent
+def _get_model_for_action(action_type: ActionType) -> type[BaseModel]:
+    """Map ActionType to the specific Guardrail Pydantic Model."""
+    match action_type:
+        case (
+            ActionType.ASK_PROCEDURE
+            | ActionType.ASK_DATE
+            | ActionType.ASK_TIME
+            | ActionType.ASK_CONFIRMATION_CODE
+        ):
+            return AskForInfo
+        case ActionType.CONFIRM_APPOINTMENT:
+            return ConfirmAppointment
+        case ActionType.APPOINTMENT_CONFIRMED:
+            return AppointmentScheduled
+        case ActionType.CHECK_AVAILABILITY:  # Assuming this action might result in offering slots
+            return OfferSlots
+        case _:
+            return GeneralMessage
 
 
-# Singleton NLG agent
-_nlg_agent: Agent[None, NLGOutput] | None = None
+class ResponseGenerator:
+    """Generates responses using PydanticAI Guardrails."""
 
+    def __init__(self):
+        settings = get_settings()
+        model = OpenAIModel(
+            "gpt-4o-mini",  # Use a smart model for accurate structure following
+            api_key=settings.openai_api_key,
+        )
 
-def get_nlg_agent() -> Agent[None, NLGOutput]:
-    """Get or create the NLG agent singleton."""
-    global _nlg_agent
-    if _nlg_agent is None:
-        _nlg_agent = _create_nlg_agent()
-    return _nlg_agent
+        self.agent = Agent(
+            model=model, system_prompt=ResponseSystemPrompt.BASE, retries=2
+        )
 
+    async def generate(
+        self, action: Action, context: dict[str, Any]
+    ) -> ResponseGuardrail:
+        """Generate a validated response for the given action."""
 
-class NLG:
-    """Natural Language Generation - humanizes templates.
-
-    Takes structured templates and makes them feel more natural
-    while preserving all data.
-    """
-
-    def __init__(self, skip_humanization: bool = False) -> None:
-        """Initialize NLG.
-
-        Args:
-            skip_humanization: If True, skip LLM and return template as-is.
-                             Useful for testing or low-latency requirements.
-        """
-        self.agent = get_nlg_agent()
-        self.skip_humanization = skip_humanization
-
-    async def humanize(self, template_text: str) -> str:
-        """Humanize a template text.
-
-        Args:
-            template_text: The filled template to humanize.
-
-        Returns:
-            Humanized version of the text.
-        """
-        # Skip humanization if disabled
-        if self.skip_humanization:
-            return template_text
-
-        # Very short messages don't need humanization
-        if len(template_text) < 50:
-            return template_text
+        target_model = _get_model_for_action(action.action_type)
 
         logger.info(
-            "nlg_humanize_start",
-            text_length=len(template_text),
+            "nlg_generate_start",
+            action_type=action.action_type,
+            target_model=target_model.__name__,
         )
+
+        prompt = (
+            f"Ação do Sistema: {action.action_type}\n"
+            f"Contexto Disponível: {context}\n"
+            f"Tarefa: Gere uma resposta para o usuário que se encaixe no modelo {target_model.__name__}."
+        )
+
+        # Special handling for specific contexts to guide the LLM
+        if action.action_type == ActionType.ASK_TIME:
+            prompt += "\nPergunte o horário preferido para o agendamento."
+        elif action.action_type == ActionType.ASK_DATE:
+            prompt += "\nPergunte a data preferida para o agendamento."
 
         try:
             result = await self.agent.run(
-                f"Humanize esta mensagem mantendo TODOS os dados:\n\n{template_text}",
-                usage_limits=UsageLimits(
-                    request_limit=2,  # Max 2 attempts
-                    total_tokens_limit=1024,  # Keep it fast
-                ),
+                prompt,
+                result_type=target_model,  # Enforces the Guardrail!
             )
 
-            humanized = result.output.humanized_text
+            response = result.output
 
             logger.info(
-                "nlg_humanize_complete",
-                original_length=len(template_text),
-                humanized_length=len(humanized),
+                "nlg_generate_success",
+                response_type=type(response).__name__,
+                message_preview=response.message[:50],
             )
 
-            return humanized
+            return response
 
         except Exception as e:
-            logger.error(
-                "nlg_humanize_error",
-                error=str(e),
-                error_type=type(e).__name__,
+            logger.error("nlg_generate_error", error=str(e))
+            # Fallback for critical failures
+            return GeneralMessage(
+                category="error",
+                message="Desculpe, tive um problema técnico. Pode repetir?",
             )
-            # On error, return original template
-            return template_text
 
 
-# Convenience function
-async def humanize_response(template_text: str, skip: bool = False) -> str:
-    """Convenience function to humanize a response.
+# Singleton
+_response_generator = None
 
-    Args:
-        template_text: Text to humanize.
-        skip: Whether to skip humanization.
 
-    Returns:
-        Humanized text.
-    """
-    nlg = NLG(skip_humanization=skip)
-    return await nlg.humanize(template_text)
+def get_response_generator() -> ResponseGenerator:
+    global _response_generator
+    if _response_generator is None:
+        _response_generator = ResponseGenerator()
+    return _response_generator
+
+
+async def generate_response(action: Action) -> str:
+    """Convenience function to generate just the text message."""
+    generator = get_response_generator()
+    response = await generator.generate(action, action.context)
+    return response.message
