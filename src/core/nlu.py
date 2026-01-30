@@ -176,7 +176,7 @@ class NLU:
                 ),
             )
 
-            output = result.data
+            output = result.output
 
             logger.info(
                 "nlu_extract_complete",

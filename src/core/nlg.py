@@ -132,7 +132,7 @@ class NLG:
                 ),
             )
 
-            humanized = result.data.humanized_text
+            humanized = result.output.humanized_text
 
             logger.info(
                 "nlg_humanize_complete",
