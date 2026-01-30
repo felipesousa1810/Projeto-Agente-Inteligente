@@ -60,33 +60,64 @@ async def get_or_create_customer(phone_number: str) -> dict[str, Any]:
     """
     client = get_supabase_client()
 
-    # Try to find existing customer
-    result = (
-        client.table("customers")
-        .select("*")
-        .eq("phone_number", phone_number)
-        .maybe_single()
-        .execute()
-    )
-
-    if result.data:
-        logger.info(
-            "customer_found",
-            customer_id=result.data["id"],
-            phone_number=phone_number,
+    # Try to find existing customer (Safer approach: limit(1) to avoid 406 on duplicates)
+    try:
+        result = (
+            client.table("customers")
+            .select("*")
+            .eq("phone_number", phone_number)
+            .limit(1)
+            .execute()
         )
-        return result.data
+
+        # Check if we got any data
+        if result and result.data and len(result.data) > 0:
+            logger.info(
+                "customer_found",
+                customer_id=result.data[0]["id"],
+                phone_number=phone_number,
+            )
+            return result.data[0]
+
+    except Exception as e:
+        logger.warning("customer_lookup_error", error=str(e))
+        # Proceed to creation if lookup failed, or re-raise?
+        # Better to try creation only if we are sure it doesn't exist.
+        # But if lookup failed due to network, creation might also fail.
+        # If lookup returned empty (no exception), we fall through.
+        pass
 
     # Create new customer
-    new_customer = {"phone_number": phone_number}
-    result = client.table("customers").insert(new_customer).execute()
+    try:
+        new_customer = {"phone_number": phone_number}
+        result = client.table("customers").insert(new_customer).execute()
 
-    logger.info(
-        "customer_created",
-        customer_id=result.data[0]["id"],
-        phone_number=phone_number,
-    )
-    return result.data[0]
+        if result and result.data:
+            logger.info(
+                "customer_created",
+                customer_id=result.data[0]["id"],
+                phone_number=phone_number,
+            )
+            return result.data[0]
+        else:
+            raise ValueError("Failed to create customer: No data returned")
+
+    except Exception as e:
+        # If creation fails (e.g. concurrent creation race condition causing unique constraint violation),
+        # try fetching one last time
+        logger.warning("customer_creation_failed_retrying_fetch", error=str(e))
+
+        result = (
+            client.table("customers")
+            .select("*")
+            .eq("phone_number", phone_number)
+            .limit(1)
+            .execute()
+        )
+        if result and result.data:
+            return result.data[0]
+
+        raise e
 
 
 async def save_message(
