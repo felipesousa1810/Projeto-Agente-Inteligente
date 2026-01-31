@@ -53,7 +53,9 @@ def _get_model_for_action(action_type: ActionType) -> type[BaseModel]:
             return ConfirmAppointment
         case ActionType.APPOINTMENT_CONFIRMED:
             return AppointmentScheduled
-        case ActionType.CHECK_AVAILABILITY:  # Assuming this action might result in offering slots
+        case (
+            ActionType.CHECK_AVAILABILITY
+        ):  # Assuming this action might result in offering slots
             return OfferSlots
         case _:
             return GeneralMessage
