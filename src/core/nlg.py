@@ -15,7 +15,6 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
 
-from src.config.settings import get_settings
 from src.core.decision_engine import Action, ActionType
 from src.core.guardrails import (
     AppointmentScheduled,
@@ -53,9 +52,7 @@ def _get_model_for_action(action_type: ActionType) -> type[BaseModel]:
             return ConfirmAppointment
         case ActionType.APPOINTMENT_CONFIRMED:
             return AppointmentScheduled
-        case (
-            ActionType.CHECK_AVAILABILITY
-        ):  # Assuming this action might result in offering slots
+        case ActionType.CHECK_AVAILABILITY:  # Assuming this action might result in offering slots
             return OfferSlots
         case _:
             return GeneralMessage
@@ -65,10 +62,8 @@ class ResponseGenerator:
     """Generates responses using PydanticAI Guardrails."""
 
     def __init__(self):
-        settings = get_settings()
         model = OpenAIModel(
-            "gpt-4o-mini",  # Use a smart model for accurate structure following
-            api_key=settings.openai_api_key,
+            "gpt-4.1-mini-2025-04-14",  # Use a smart model for accurate structure following
         )
 
         self.agent = Agent(

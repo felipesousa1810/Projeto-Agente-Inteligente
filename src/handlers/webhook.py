@@ -103,11 +103,23 @@ async def whatsapp_webhook(
                 # Por enquanto, propagar o erro pois precisamos do cliente
                 raise db_err
 
+            # Ensure trace_id is a valid UUID string for database compatibility
+            trace_id = span.get_span_context().trace_id
+            if trace_id:
+                # Convert 128-bit int to 32-char hex string, then to UUID string
+                import uuid
+
+                trace_id_str = str(uuid.UUID(int=trace_id))
+            else:
+                import uuid
+
+                trace_id_str = str(uuid.uuid4())
+
             # Criar objeto de dependências
             deps = AppDependencies(
                 supabase=supabase_service,
                 customer_id=message.from_number,
-                trace_id=span.get_span_context().trace_id or "unknown",
+                trace_id=trace_id_str,
             )
 
             # 4. Salvar mensagem de ENTRADA
