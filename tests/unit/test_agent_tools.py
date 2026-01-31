@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.core.agent import _execute_tool
+from src.core.dependencies import AppDependencies
 
 
 class TestAgentTools:
@@ -16,18 +17,20 @@ class TestAgentTools:
 
         context = {"date": "2026-02-15"}
 
-        # Mock dependencies
-        with (
-            patch(
-                "src.services.supabase.get_appointments_for_date",
-                new_callable=AsyncMock,
-            ) as mock_db_get,
-            patch("src.services.calendar.get_calendar_service") as mock_get_calendar,
-        ):
-            # Setup DB mock (busy at 14:00)
-            mock_db_get.return_value = [{"scheduled_time": "14:00:00"}]
+        # Mocks
+        mock_supabase_service = MagicMock()
+        mock_supabase_service.get_appointments_for_date = AsyncMock(
+            return_value=[{"scheduled_time": "14:00:00"}]
+        )
 
-            # Setup Calendar mock (busy at 15:00)
+        deps = AppDependencies(
+            supabase=mock_supabase_service,
+            customer_id="customer_123",
+            trace_id="trace_123",
+        )
+
+        # Mock Calendar Service (ainda obtido via singleton dentro da tool)
+        with patch("src.services.calendar.get_calendar_service") as mock_get_calendar:
             mock_calendar = MagicMock()
             mock_calendar.check_availability.return_value = [
                 {"start": "2026-02-15T15:00:00Z", "end": "2026-02-15T16:00:00Z"}
@@ -36,7 +39,7 @@ class TestAgentTools:
 
             # Execute
             result = await _execute_tool(
-                "check_availability", context, "customer_123", "trace_123"
+                "check_availability", context, "customer_123", "trace_123", deps
             )
 
             assert result["available"] is True
@@ -53,23 +56,27 @@ class TestAgentTools:
         """Test successful appointment creation logic."""
         context = {"date": "2026-02-15", "time": "10:00", "procedure": "Limpeza"}
 
-        with (
-            patch(
-                "src.services.supabase.get_or_create_customer", new_callable=AsyncMock
-            ) as mock_get_customer,
-            patch(
-                "src.services.supabase.create_appointment", new_callable=AsyncMock
-            ) as mock_create_appt,
-            patch("src.services.calendar.get_calendar_service") as mock_get_calendar,
-        ):
-            # Mocks
-            mock_get_customer.return_value = {"id": "uuid-cust", "name": "Test User"}
-            mock_create_appt.return_value = {"id": "uuid-appt"}
+        # Mocks
+        mock_supabase_service = MagicMock()
+        mock_supabase_service.get_or_create_customer = AsyncMock(
+            return_value={"id": "uuid-cust", "name": "Test User"}
+        )
+        mock_supabase_service.create_appointment = AsyncMock(
+            return_value={"id": "uuid-appt"}
+        )
+
+        deps = AppDependencies(
+            supabase=mock_supabase_service,
+            customer_id="123456789",
+            trace_id="trace_123",
+        )
+
+        with patch("src.services.calendar.get_calendar_service") as mock_get_calendar:
             mock_calendar = MagicMock()
             mock_get_calendar.return_value = mock_calendar
 
             result = await _execute_tool(
-                "create_appointment", context, "123456789", "trace_123"
+                "create_appointment", context, "123456789", "trace_123", deps
             )
 
             assert result["success"] is True
@@ -79,24 +86,29 @@ class TestAgentTools:
             # Verify GCal call
             mock_calendar.create_event.assert_called_once()
 
+            # Verify Supabase calls
+            mock_supabase_service.get_or_create_customer.assert_called_once()
+            mock_supabase_service.create_appointment.assert_called_once()
+
     @pytest.mark.asyncio
     async def test_cancel_appointment_flow(self):
         """Test cancel appointment flow."""
         context = {"confirmation_code": "APPT-123"}
 
-        with (
-            patch(
-                "src.services.supabase.get_appointment_by_code", new_callable=AsyncMock
-            ) as mock_get,
-            patch(
-                "src.services.supabase.cancel_appointment", new_callable=AsyncMock
-            ) as mock_cancel,
-        ):
-            mock_get.return_value = {"id": "uuid-appt"}
+        # Mocks
+        mock_supabase_service = MagicMock()
+        mock_supabase_service.get_appointment_by_code = AsyncMock(
+            return_value={"id": "uuid-appt"}
+        )
+        mock_supabase_service.cancel_appointment = AsyncMock()
 
-            result = await _execute_tool(
-                "cancel_appointment", context, "123", "trace_123"
-            )
+        deps = AppDependencies(
+            supabase=mock_supabase_service, customer_id="123", trace_id="trace_123"
+        )
 
-            assert result["success"] is True
-            mock_cancel.assert_awaited_with("uuid-appt")
+        result = await _execute_tool(
+            "cancel_appointment", context, "123", "trace_123", deps
+        )
+
+        assert result["success"] is True
+        mock_supabase_service.cancel_appointment.assert_awaited_with("uuid-appt")

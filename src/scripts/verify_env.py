@@ -4,7 +4,7 @@ import asyncio
 import os
 
 from src.config.settings import get_settings
-from src.services.supabase import get_supabase_client
+from src.services.supabase import get_supabase_service
 
 
 async def verify_supabase():
@@ -15,7 +15,8 @@ async def verify_supabase():
             print("   [ERROR] Missing SUPABASE_URL or SUPABASE_KEY")
             return False
 
-        client = get_supabase_client()
+        service = get_supabase_service()
+        client = service.client
         # Simple query to check connection (count customers)
         res = client.table("customers").select("count", count="exact").execute()
         print(f"   [SUCCESS] Connection successful! Found {res.count} customers.")

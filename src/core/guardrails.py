@@ -9,13 +9,13 @@ This implements the "Guardrails" pattern:
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 
 class ResponseGuardrail(BaseModel):
     """Base class for all response guardrails."""
 
-    pass
+    message: str
 
 
 class AskForInfo(ResponseGuardrail):
@@ -57,7 +57,7 @@ class ConfirmAppointment(ResponseGuardrail):
 
     @field_validator("message")
     @classmethod
-    def validate_contains_data(cls, v: str, info: Field) -> str:
+    def validate_contains_data(cls, v: str, info: ValidationInfo) -> str:
         # We can't easily validate content against other fields here without model_validator,
         # but we can check for basic confirmation keywords.
         return v

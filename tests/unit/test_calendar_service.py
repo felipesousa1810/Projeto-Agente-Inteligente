@@ -18,6 +18,7 @@ class TestGoogleCalendarService:
         """Test check_availability parses API response correctly."""
         # Setup mocks
         mock_auth.return_value = MagicMock()
+        mock_settings.return_value.mock_calendar = False  # Important: Disable mock mode
         mock_service = MagicMock()
         mock_build.return_value = mock_service
 

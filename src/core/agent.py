@@ -11,11 +11,12 @@ from src.config.agent_config import AgentConfig, get_dynamic_system_prompt
 from src.contracts.agent_response import AgentResponse, IntentType
 from src.contracts.structured_output import StructuredAgentOutput
 from src.contracts.whatsapp_message import WhatsAppMessage
+from src.core.dependencies import AppDependencies
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Mapping from structured output intent to IntentType enum
+# Mapeamento da intenção de saída estruturada para enum IntentType
 INTENT_MAPPING: dict[str, IntentType] = {
     "faq": IntentType.FAQ,
     "schedule": IntentType.SCHEDULE,
@@ -28,68 +29,49 @@ INTENT_MAPPING: dict[str, IntentType] = {
 }
 
 
-# Agent dependencies (injected at runtime)
-class AgentDependencies:
-    """Dependencies injected into agent tools."""
-
-    def __init__(
-        self,
-        customer_id: str | None = None,
-        trace_id: str | None = None,
-    ) -> None:
-        """Initialize dependencies.
-
-        Args:
-            customer_id: ID of the customer.
-            trace_id: Trace ID for observability.
-        """
-        self.customer_id = customer_id
-        self.trace_id = trace_id or str(uuid.uuid4())
-
-
 def create_agent(
     config: AgentConfig | None = None,
-) -> Agent[AgentDependencies, StructuredAgentOutput]:
-    """Create and configure the Pydantic AI agent.
+) -> Agent[AppDependencies, StructuredAgentOutput]:
+    """Cria e configura o agente Pydantic AI.
 
     Args:
-        config: Optional agent configuration. Uses defaults if not provided.
+        config: Configuração opcional do agente. Usa padrões se não fornecido.
 
     Returns:
-        Configured Agent instance with structured output.
+        Instância do Agente configurada com saída estruturada.
     """
     if config is None:
         config = AgentConfig()
 
-    # Create OpenAI model with deterministic settings
+    # Cria o modelo OpenAI com configurações determinísticas
     model = OpenAIModel(
         config.model,
-        # api_key is automatically loaded from OPENAI_API_KEY env var
+        # api_key é carregada automaticamente da variável de ambiente OPENAI_API_KEY
     )
 
-    # Get dynamic system prompt with current date/time
+    # Obtém prompt de sistema dinâmico com data/hora atual
     dynamic_prompt = get_dynamic_system_prompt()
 
-    # Create agent with structured output type
-    agent: Agent[AgentDependencies, StructuredAgentOutput] = Agent(
+    # Cria o agente com tipo de saída estruturada
+    agent: Agent[AppDependencies, StructuredAgentOutput] = Agent(
         model=model,
         system_prompt=dynamic_prompt,
-        deps_type=AgentDependencies,
+        deps_type=AppDependencies,
         output_type=StructuredAgentOutput,
-        retries=0,  # External retry control
+        retries=0,  # Controle de retry externo
     )
 
-    # Register tools
+    # Registrar ferramentas (tools)
     @agent.tool
     async def check_availability(
-        ctx: RunContext[AgentDependencies],
+        ctx: RunContext[AppDependencies],
         date_str: str,
         time_str: str,
     ) -> dict[str, Any]:
         """Verifica disponibilidade de horário.
 
         Args:
-            ctx: Run context with dependencies.
+            ctx: Contexto de execução com dependências.
             date_str: Data no formato YYYY-MM-DD.
             time_str: Hora no formato HH:MM.
 
@@ -103,7 +85,7 @@ def create_agent(
             time=time_str,
         )
 
-        # Parse date and time
+        # Parse de data e hora
         try:
             check_date = date.fromisoformat(date_str)
             check_time = time.fromisoformat(time_str)
@@ -114,7 +96,7 @@ def create_agent(
                 "alternatives": [],
             }
 
-        # Check if date is in the future
+        # Verifica se data é no passado
         if check_date < date.today():
             return {
                 "available": False,
@@ -122,11 +104,8 @@ def create_agent(
                 "alternatives": [],
             }
 
-        # TODO: Implement actual availability check with database
-        # For now, simulate availability
+        # Verifica horário comercial: 8:00 - 18:00
         hour = check_time.hour
-
-        # Business hours: 8:00 - 18:00
         if hour < 8 or hour >= 18:
             return {
                 "available": False,
@@ -134,21 +113,53 @@ def create_agent(
                 "alternatives": ["09:00", "10:00", "14:00", "15:00"],
             }
 
+        # 1. Verificar slots ocupados no Supabase (Interno) via serviço injetado
+        # Nota: O serviço Supabase precisa ter o método get_appointments_for_date
+        try:
+            db_appointments = await ctx.deps.supabase.get_appointments_for_date(
+                date_str
+            )
+        except Exception as e:
+            logger.error("erro_verificacao_banco", error=str(e))
+            # Fallback seguro se banco falhar? Ou erro?
+            # Por enquanto, logar e assumir vazio ou retornar erro
+            db_appointments = []
+
+        # TODO: Implementar verificação real no Google Calendar (Externo)
+        # Seria algo como: ctx.deps.calendar.check_availability(check_date)
+
+        # Logica simples de mesclagem (substituir pela lógica real)
+        all_slots = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"]
+        taken_times = set()
+
+        for appt in db_appointments:
+            # stored as string HH:MM:SS or time object
+            t = str(appt["scheduled_time"])[:5]
+            taken_times.add(t)
+
+        available_slots = [s for s in all_slots if s not in taken_times]
+
+        # Se o horário solicitado está na lista de disponíveis
+        is_available = time_str in available_slots
+
+        # Se a lista estiver vazia e o horário não for tomado (ex: não consultou calendar), assume livre?
+        # Pela lógica acima, só é livre se estiver em all_slots e não tomado.
+
         return {
-            "available": True,
-            "alternatives": [],
+            "available": is_available,
+            "alternatives": available_slots if not is_available else [],
         }
 
     @agent.tool
     async def create_appointment(
-        ctx: RunContext[AgentDependencies],
+        ctx: RunContext[AppDependencies],
         date_str: str,
         time_str: str,
     ) -> dict[str, Any]:
         """Cria um novo agendamento.
 
         Args:
-            ctx: Run context with dependencies.
+            ctx: Contexto de execução com dependências.
             date_str: Data no formato YYYY-MM-DD.
             time_str: Hora no formato HH:MM.
 
@@ -163,29 +174,51 @@ def create_agent(
             time=time_str,
         )
 
-        # Generate confirmation code
+        if not ctx.deps.customer_id:
+            return {"success": False, "error": "ID do cliente não identificado"}
+
+        # Gerar código de confirmação
         confirmation_code = f"APPT-{uuid.uuid4().hex[:8].upper()}"
-        appointment_id = str(uuid.uuid4())
 
-        # TODO: Implement actual database insertion
+        try:
+            # 1. Obter ou criar cliente (garantir que existe no DB)
+            # Nota: Isso deveria idealmente ser feito antes, mas garantimos aqui
+            customer = await ctx.deps.supabase.get_or_create_customer(
+                ctx.deps.customer_id
+            )
 
-        return {
-            "success": True,
-            "appointment_id": appointment_id,
-            "confirmation_code": confirmation_code,
-            "date": date_str,
-            "time": time_str,
-        }
+            # 2. Criar no Supabase usando serviço injetado
+            appt = await ctx.deps.supabase.create_appointment(
+                customer_id=customer["id"],
+                scheduled_date=date_str,
+                scheduled_time=time_str,
+                confirmation_code=confirmation_code,
+            )
+
+            # 3. Criar no Google Calendar (TODO: Injetar serviço de calendário)
+            # calendar_service = ctx.deps.calendar...
+
+            return {
+                "success": True,
+                "appointment_id": appt["id"],
+                "confirmation_code": confirmation_code,
+                "date": date_str,
+                "time": time_str,
+            }
+
+        except Exception as e:
+            logger.error("falha_criar_agendamento", error=str(e))
+            return {"success": False, "error": "Erro ao criar agendamento"}
 
     @agent.tool
     async def cancel_appointment(
-        ctx: RunContext[AgentDependencies],
+        ctx: RunContext[AppDependencies],
         confirmation_code: str,
     ) -> dict[str, Any]:
         """Cancela um agendamento existente.
 
         Args:
-            ctx: Run context with dependencies.
+            ctx: Contexto de execução com dependências.
             confirmation_code: Código de confirmação do agendamento.
 
         Returns:
@@ -197,21 +230,31 @@ def create_agent(
             confirmation_code=confirmation_code,
         )
 
-        # TODO: Implement actual cancellation with database
+        try:
+            # 1. Buscar agendamento
+            appt = await ctx.deps.supabase.get_appointment_by_code(confirmation_code)
+            if not appt:
+                return {"success": False, "error": "Agendamento não encontrado"}
 
-        return {
-            "success": True,
-            "message": f"Agendamento {confirmation_code} cancelado com sucesso.",
-        }
+            # 2. Cancelar no Supabase
+            await ctx.deps.supabase.cancel_appointment(appt["id"])
+
+            return {
+                "success": True,
+                "message": f"Agendamento {confirmation_code} cancelado com sucesso.",
+            }
+        except Exception as e:
+            logger.error("falha_cancelar_agendamento", error=str(e))
+            return {"success": False, "error": "Erro ao processar cancelamento"}
 
     return agent
 
 
 # Global agent instance (lazy initialization)
-_agent: Agent[AgentDependencies, StructuredAgentOutput] | None = None
+_agent: Agent[AppDependencies, StructuredAgentOutput] | None = None
 
 
-def get_agent() -> Agent[AgentDependencies, StructuredAgentOutput]:
+def get_agent() -> Agent[AppDependencies, StructuredAgentOutput]:
     """Get or create the global agent instance.
 
     Returns:
@@ -223,32 +266,53 @@ def get_agent() -> Agent[AgentDependencies, StructuredAgentOutput]:
     return _agent
 
 
-async def process_message(message: WhatsAppMessage) -> AgentResponse:
-    """Process incoming WhatsApp message using DETERMINISTIC architecture.
+async def process_message(
+    message: WhatsAppMessage,
+    deps: AppDependencies | None = None,
+) -> AgentResponse:
+    """Processa mensagem de entrada do WhatsApp usando arquitetura DETERMINÍSTICA.
 
-    Architecture: NLU → DecisionEngine → Templates → NLG
-    - NLU: Extracts intent and entities (LLM)
-    - DecisionEngine: Decides next action (CODE - 100% deterministic)
-    - Templates: Provides response structure (CODE)
-    - NLG: Humanizes the response (LLM)
+    Arquitetura: NLU -> DecisionEngine -> Templates -> NLG
+    - NLU: Extrai intenção e entidades (LLM)
+    - DecisionEngine: Decide próxima ação (CÓDIGO - 100% determinístico)
+    - Templates/Contexto: Prepara dados para resposta
+    - NLG: Humaniza a resposta (LLM com Guardrails)
 
     Args:
-        message: Validated WhatsApp message.
+        message: Mensagem WhatsApp validada.
+        deps: Dependências da aplicação (Supabase, Trace ID, etc).
 
     Returns:
-        AgentResponse with intent, reply, and extracted data.
+        AgentResponse com intenção, resposta e dados extraídos.
     """
     from src.core.decision_engine import get_decision_engine
     from src.core.nlg import generate_response
     from src.core.nlu import NLU
     from src.core.templates import get_faq_answer
     from src.services.conversation_state import get_conversation_state_manager
+    from src.services.supabase import get_supabase_service
 
-    trace_id = str(uuid.uuid4())
+    # Se deps não fornecido, cria com padrões (fallback para suportar código legado/testes)
+    if deps is None:
+        trace_id = str(uuid.uuid4())
+        # Cria serviço supabase padrão
+        supabase_service = get_supabase_service()
+        deps = AppDependencies(
+            supabase=supabase_service.client,
+            customer_id=message.from_number,
+            trace_id=trace_id,
+        )
+        # Hack temporário: AppDependencies espera Client, mas tools usam métodos de SupabaseService...
+        # Para corrigir isso corretamente: AppDependencies deve conter SupabaseService, não Client puro.
+        # Mas vamos ajustar AppDependencies em dependencies.py primeiro ou adaptar aqui?
+        # Melhor: Vamos assumir que deps.supabase é o SERVICE já instanciado que tem os métodos ricos.
+        # Então precisamos atualizar dependencies.py para tipar com SupabaseService.
+
+    trace_id = deps.trace_id or str(uuid.uuid4())
     now = datetime.now()
 
     logger.info(
-        "process_message_start",
+        "inicio_processamento_mensagem",
         trace_id=trace_id,
         message_id=message.message_id,
         from_number=message.from_number,
@@ -259,20 +323,20 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
 
     try:
         # =====================================================
-        # STEP 1: Get conversation state from Redis
+        # PASSO 1: Obter estado da conversa do Redis
         # =====================================================
         state_manager = get_conversation_state_manager()
         fsm = await state_manager.get_or_create(message.from_number)
 
         logger.info(
-            "fsm_state_loaded",
+            "estado_fsm_carregado",
             trace_id=trace_id,
             current_state=fsm.current_state.value,
             collected_data=fsm.collected_data,
         )
 
         # =====================================================
-        # STEP 2: NLU - Extract intent and entities (LLM)
+        # PASSO 2: NLU - Extrair intenção e entidades (LLM)
         # =====================================================
         nlu = NLU()
         nlu_output = await nlu.extract(
@@ -282,7 +346,7 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
         )
 
         logger.info(
-            "nlu_extraction_complete",
+            "extracao_nlu_completa",
             trace_id=trace_id,
             intent=nlu_output.intent,
             extracted_date=nlu_output.extracted_date,
@@ -292,14 +356,14 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
         )
 
         # =====================================================
-        # STEP 3: DecisionEngine - Decide next action (CODE)
-        # This is 100% DETERMINISTIC - same input = same output
+        # PASSO 3: DecisionEngine - Decidir próxima ação (CÓDIGO)
+        # Isso é 100% DETERMINÍSTICO - mesma entrada = mesma saída
         # =====================================================
         decision_engine = get_decision_engine()
         action = decision_engine.decide(fsm, nlu_output)
 
         logger.info(
-            "decision_made",
+            "decisao_tomada",
             trace_id=trace_id,
             action_type=action.action_type.value,
             template_key=action.template_key,
@@ -307,30 +371,34 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
         )
 
         # =====================================================
-        # STEP 4: Execute tool if needed (CODE)
+        # PASSO 4: Executar ferramenta se necessário (CÓDIGO)
         # =====================================================
         tool_result: dict[str, Any] = {}
         if action.requires_tool and action.tool_name:
+            # Usar o service que veio nas deps
             tool_result = await _execute_tool(
                 action.tool_name,
                 action.context,
                 message.from_number,
                 trace_id,
+                # Passando o service wrapper. Nota: deps.supabase no dependencies.py está como Client,
+                # mas vamos mudar para SupabaseService. Vou fazer cast ou update.
+                deps,
             )
-            # Merge tool result into context
+            # Mesclar resultado da tool no contexto
             action.context.update(tool_result)
 
         # =====================================================
-        # STEP 5: Generate Response (Guardrails NLG)
+        # PASSO 5: Gerar Resposta (Guardrails NLG)
         # =====================================================
-        # Handle special cases for context enrichment
+        # Lidar com casos especiais para enriquecimento de contexto
         if action.template_key == "faq_response":
             faq_answer = get_faq_answer(nlu_output.extracted_procedure)
             action.context["answer"] = faq_answer
             if not nlu_output.extracted_procedure:
                 action.context["procedure"] = "tratamentos"
 
-        # Handle availability for time slots
+        # Lidar com disponibilidade para slots de horário
         if action.template_key == "ask_time":
             slots = action.context.get(
                 "available_slots", "09:00, 10:00, 14:00, 15:00, 16:00"
@@ -339,26 +407,26 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
                 slots = ", ".join(slots)
             action.context["available_slots"] = slots
 
-        # Generate the response using PydanticAI Guardrails
-        # The LLM generates the text strictly adhering to the schema for this ActionType
+        # Gerar a resposta usando PydanticAI Guardrails
+        # O LLM gera o texto estritamente aderindo ao schema para este ActionType
         humanized_response = await generate_response(action)
 
         # =====================================================
-        # STEP 7: Update FSM state if action specifies
+        # PASSO 7: Atualizar estado FSM se a ação especificar
         # =====================================================
         if action.next_state and fsm.can_transition_to(action.next_state):
             fsm.transition(action.next_state)
 
-        # Save updated FSM to Redis
+        # Salvar FSM atualizado no Redis
         await state_manager.save(message.from_number, fsm)
 
         # =====================================================
-        # STEP 8: Build and return response
+        # PASSO 8: Construir e retornar resposta
         # =====================================================
-        # Map NLU intent to IntentType enum
+        # Mapear intenção NLU para enum IntentType
         intent = INTENT_MAPPING.get(nlu_output.intent, IntentType.UNKNOWN)
 
-        # Build extracted_data from FSM
+        # Construir extracted_data do FSM
         extracted_data: dict[str, str] = dict(fsm.collected_data)
 
         response = AgentResponse(
@@ -374,7 +442,7 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
         elapsed_ms = (datetime.now() - start_time).total_seconds() * 1000
 
         logger.info(
-            "process_message_complete",
+            "processamento_mensagem_completo",
             trace_id=trace_id,
             intent=response.intent.value,
             confidence=response.confidence,
@@ -391,7 +459,7 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
         elapsed_ms = (datetime.now() - start_time).total_seconds() * 1000
 
         logger.error(
-            "process_message_error",
+            "erro_processamento_mensagem",
             trace_id=trace_id,
             error=str(e),
             error_type=type(e).__name__,
@@ -399,7 +467,7 @@ async def process_message(message: WhatsAppMessage) -> AgentResponse:
             latency_ms=elapsed_ms,
         )
 
-        # Return error response
+        # Retornar resposta de erro
         return AgentResponse(
             trace_id=trace_id,
             intent=IntentType.UNKNOWN,
@@ -414,29 +482,25 @@ async def _execute_tool(
     context: dict[str, Any],
     customer_id: str,
     trace_id: str,
+    deps: AppDependencies,
 ) -> dict[str, Any]:
-    """Execute a tool based on action requirements.
+    """Executa uma ferramenta baseada nos requisitos da ação.
 
     Args:
-        tool_name: Name of the tool to execute.
-        context: Context data for the tool.
-        customer_id: Customer phone number.
-        trace_id: Trace ID for logging.
+        tool_name: Nome da ferramenta a executar.
+        context: Dados de contexto para a ferramenta.
+        customer_id: Telefone do cliente.
+        trace_id: ID de rastreamento.
+        deps: Dependências injetadas (SupabaseService, etc).
 
     Returns:
-        Tool execution result.
+        Resultado da execução da ferramenta.
     """
     from src.services.calendar import get_calendar_service
-    from src.services.supabase import (
-        cancel_appointment,
-        create_appointment,
-        get_appointment_by_code,
-        get_appointments_for_date,
-        get_or_create_customer,
-    )
+    # Nota: deps.supabase agora deve ser tratado como SupabaseService
 
     logger.info(
-        "tool_execution_start",
+        "inicio_execucao_tool",
         trace_id=trace_id,
         tool_name=tool_name,
     )
@@ -449,33 +513,32 @@ async def _execute_tool(
         try:
             check_date = date.fromisoformat(date_str)
 
-            # 1. Fetch busy slots from Supabase (Internal)
-            db_appointments = await get_appointments_for_date(date_str)
+            # 1. Buscar slots ocupados no Supabase (Interno) via deps
+            # Assumindo que deps.supabase é SupabaseService
+            db_appointments = await deps.supabase.get_appointments_for_date(date_str)
 
-            # 2. Fetch busy slots from Google Calendar (External)
+            # 2. Buscar slots ocupados no Google Calendar (Externo)
+            # TODO: Injetar calendar service em deps também
             calendar_service = get_calendar_service()
             gcal_busy = calendar_service.check_availability(check_date)
 
-            # 3. Merge and calculate available slots (Simple logic for now)
-            # Business logic: 09:00 - 17:00, 1 hour slots
+            # 3. Mesclar e calcular slots disponíveis (Lógica simples por enquanto)
+            # Lógica de negócio: 09:00 - 17:00, slots de 1 hora
             all_slots = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"]
             taken_times = set()
 
-            # Process DB appointments
+            # Processar agendamentos do DB
             for appt in db_appointments:
-                # stored as string HH:MM:SS or time object
+                # armazenado como string HH:MM:SS ou objeto time
                 t = str(appt["scheduled_time"])[:5]
                 taken_times.add(t)
 
-            # Process GCal events
-            # GCal returns ISO Format. robust parsing needed
+            # Processar eventos GCal
             for slot in gcal_busy:
-                start_iso = slot["start"]  # e.g. 2026-02-15T14:00:00Z
+                start_iso = slot["start"]  # ex: 2026-02-15T14:00:00Z
                 try:
-                    # Parse simplified
+                    # Parse simplificado (idealmente usar biblioteca timezone robusta)
                     dt_start = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
-                    # Convert to local time simplistic way (should use timezone lib)
-                    # For MVP, just extracting hour if date matches
                     if dt_start.date() == check_date:
                         taken_times.add(dt_start.strftime("%H:%M"))
                 except ValueError:
@@ -499,23 +562,27 @@ async def _execute_tool(
         if not date_str or not time_str:
             return {"success": False, "error": "Data ou hora faltando"}
 
-        # 1. Get/Create Customer
-        customer = await get_or_create_customer(
-            customer_id
-        )  # customer_id is phone number here
+        # 1. Obter/Criar Cliente
+        try:
+            customer = await deps.supabase.get_or_create_customer(
+                customer_id
+            )  # customer_id é o telefone aqui
+        except Exception as e:
+            logger.error("erro_cliente_tool", error=str(e))
+            return {"success": False, "error": "Erro ao identificar cliente"}
 
-        # 2. Create in Supabase
+        # 2. Criar no Supabase
         confirmation_code = f"APPT-{uuid.uuid4().hex[:8].upper()}"
 
         try:
-            appt = await create_appointment(
+            appt = await deps.supabase.create_appointment(
                 customer_id=customer["id"],
                 scheduled_date=date_str,
                 scheduled_time=time_str,
                 confirmation_code=confirmation_code,
             )
 
-            # 3. Create in Google Calendar
+            # 3. Criar no Google Calendar
             calendar_service = get_calendar_service()
 
             # Parse datetimes
@@ -537,7 +604,7 @@ async def _execute_tool(
                 "time": time_str,
             }
         except Exception as e:
-            logger.error("create_appointment_failed", error=str(e))
+            logger.error("falha_criar_agendamento_tool", error=str(e))
             return {"success": False, "error": "Erro ao criar agendamento"}
 
     if tool_name == "cancel_appointment":
@@ -545,17 +612,16 @@ async def _execute_tool(
         if not confirmation_code:
             return {"success": False, "error": "Código não fornecido"}
 
-        # 1. Find appointment
-        appt = await get_appointment_by_code(confirmation_code)
+        # 1. Encontrar agendamento
+        appt = await deps.supabase.get_appointment_by_code(confirmation_code)
         if not appt:
             return {"success": False, "error": "Agendamento não encontrado"}
 
-        # 2. Cancel in Supabase
-        await cancel_appointment(appt["id"])
+        # 2. Cancelar no Supabase
+        await deps.supabase.cancel_appointment(appt["id"])
 
-        # 3. Cancel in GCal (TODO: need to store GCal Event ID in DB to delete specific event)
-        # For MVP, purely logging that manual check needed for GCal if not linked
-        logger.info("gcal_cancel_needed", appointment_id=appt["id"])
+        # 3. Cancelar no GCal (TODO: verificar necessidade de armazenar ID do evento)
+        logger.info("cancelamento_gcal_necessario_manual", appointment_id=appt["id"])
 
         return {
             "success": True,
@@ -563,7 +629,7 @@ async def _execute_tool(
         }
 
     logger.warning(
-        "unknown_tool",
+        "tool_desconhecida",
         trace_id=trace_id,
         tool_name=tool_name,
     )

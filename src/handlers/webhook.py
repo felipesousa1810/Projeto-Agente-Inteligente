@@ -85,48 +85,60 @@ async def whatsapp_webhook(
                     error=str(redis_err),
                 )
 
-            # 3. Create or Get Customer (Ensure customer exists)
-            from src.services.supabase import get_or_create_customer, save_message
+            # 3. Criar ou Obter Cliente (Garantir que cliente existe)
+            from src.core.dependencies import AppDependencies
+            from src.services.supabase import get_supabase_service
+
+            supabase_service = get_supabase_service()
 
             try:
-                # We need customer ID for the message table
-                customer = await get_or_create_customer(message.from_number)
+                # Precisamos do ID do cliente para a tabela de mensagens
+                customer = await supabase_service.get_or_create_customer(
+                    message.from_number
+                )
                 customer_id = customer["id"]
             except Exception as db_err:
-                logger.error("customer_creation_failed", error=str(db_err))
-                # Fallback to recording without customer ID if possible, or fail gracefully
-                # For now, we'll try to proceed but saving message requires customer_id
+                logger.error("falha_criacao_cliente", error=str(db_err))
+                # Fallback ou falha graciosa?
+                # Por enquanto, propagar o erro pois precisamos do cliente
                 raise db_err
 
-            # 4. Save INCOMING message
+            # Criar objeto de dependências
+            deps = AppDependencies(
+                supabase=supabase_service,
+                customer_id=message.from_number,
+                trace_id=span.get_span_context().trace_id or "unknown",
+            )
+
+            # 4. Salvar mensagem de ENTRADA
             try:
-                await save_message(
+                await supabase_service.save_message(
                     message_id=message.message_id,
                     customer_id=customer_id,
                     direction="incoming",
                     body=message.body,
-                    intent=None,  # Will update later or save as is
-                    trace_id=span.get_span_context().trace_id or "unknown",
+                    intent=None,  # Será atualizado depois ou salvo como está
+                    trace_id=deps.trace_id,
                 )
             except Exception as save_err:
-                logger.error("save_incoming_failed", error=str(save_err))
-                # Don't block processing if save fails, but log it
+                logger.error("falha_salvar_entrada", error=str(save_err))
+                # Não bloquear processamento se salvar falhar, apenas logar
 
             # 5. Processar mensagem com agente
-            response = await process_message(message)
+            response = await process_message(message, deps=deps)
 
             span.set_attribute("intent", response.intent.value)
             span.set_attribute("confidence", response.confidence)
             span.set_attribute("trace_id", response.trace_id)
 
-            # 6. Save OUTGOING message (Response)
+            # 6. Salvar mensagem de SAÍDA (Resposta)
             try:
-                # Generate a unique ID for the outgoing message
+                # Gerar ID único para mensagem de saída
                 import uuid
 
                 outgoing_id = f"MSG-{uuid.uuid4().hex[:16].upper()}"
 
-                await save_message(
+                await supabase_service.save_message(
                     message_id=outgoing_id,
                     customer_id=customer_id,
                     direction="outgoing",
@@ -135,7 +147,7 @@ async def whatsapp_webhook(
                     trace_id=response.trace_id,
                 )
             except Exception as save_out_err:
-                logger.error("save_outgoing_failed", error=str(save_out_err))
+                logger.error("falha_salvar_saida", error=str(save_out_err))
 
             # 7. Enviar resposta (assíncrono)
             background_tasks.add_task(
@@ -155,7 +167,7 @@ async def whatsapp_webhook(
                 pass
 
             logger.info(
-                "webhook_processed",
+                "webhook_processado",
                 message_id=message.message_id,
                 trace_id=response.trace_id,
                 intent=response.intent.value,
