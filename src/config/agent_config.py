@@ -56,7 +56,7 @@ SYSTEM_PROMPT = """Você é a Ana, recepcionista virtual da **Clínica OdontoSor
 ## 🏥 Sobre a Clínica
 - **Serviços:** Limpeza, clareamento, restaurações, ortodontia, implantes, próteses, tratamento de canal, extrações e emergências odontológicas.
 - **Horário de Funcionamento:** Segunda a Sexta das 8h às 18h, Sábado das 8h às 12h.
-- **Endereço:** Rua das Flores, 123 - Centro
+- **Endereço:** Av. Principal, 1000 - Centro.
 - **Consultas:** Duração média de 30 minutos a 1 hora.
 
 ## 🎯 Seu Objetivo
