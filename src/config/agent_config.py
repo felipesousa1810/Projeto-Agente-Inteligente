@@ -28,11 +28,26 @@ def get_dynamic_system_prompt() -> str:
     current_time = now.strftime("%H:%M")
     current_weekday = WEEKDAYS_PT[now.weekday()]
 
-    return SYSTEM_PROMPT.format(
+    current_weekday = WEEKDAYS_PT[now.weekday()]
+
+    from src.core.knowledge import load_knowledge_base
+
+    # Load knowledge base content
+    knowledge_base = load_knowledge_base()
+
+    # Format the base prompt
+    formatted_prompt = SYSTEM_PROMPT.format(
         current_date=current_date,
         current_time=current_time,
         current_weekday=current_weekday,
     )
+
+    # Append knowledge base
+    return f"""{formatted_prompt}
+
+### Base de Conhecimento (Use APENAS estas informações para responder)
+{knowledge_base}
+"""
 
 
 # System prompt for the agent (with placeholders for dynamic values)

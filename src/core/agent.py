@@ -288,7 +288,6 @@ async def process_message(
     from src.core.decision_engine import get_decision_engine
     from src.core.nlg import generate_response
     from src.core.nlu import NLU
-    from src.core.templates import get_faq_answer
     from src.services.conversation_state import get_conversation_state_manager
     from src.services.supabase import get_supabase_service
 
@@ -392,11 +391,7 @@ async def process_message(
         # PASSO 5: Gerar Resposta (Guardrails NLG)
         # =====================================================
         # Lidar com casos especiais para enriquecimento de contexto
-        if action.template_key == "faq_response":
-            faq_answer = get_faq_answer(nlu_output.extracted_procedure)
-            action.context["answer"] = faq_answer
-            if not nlu_output.extracted_procedure:
-                action.context["procedure"] = "tratamentos"
+        # FAQ agora é respondido via Context Injection, o LLM já tem a resposta
 
         # Lidar com disponibilidade para slots de horário
         if action.template_key == "ask_time":
